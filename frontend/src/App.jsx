@@ -1,44 +1,62 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import TicketList from './pages/TicketList';
 import CreateTicket from './pages/CreateTicket';
 import TicketDetails from './pages/TicketDetails';
 import AdminTickets from './pages/AdminTickets';
 
 export default function App() {
-  const isAuthenticated = !!localStorage.getItem('token');
-
   return (
-    <Router>
-      <Routes>
-        {/* Pública */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Redireciona raiz */}
-        <Route
-          path="/"
-          element={<Navigate to={isAuthenticated ? '/tickets' : '/login'} replace />}
-        />
-
-        {/* Protegidas */}
-        <Route element={<ProtectedRoute />}>
-          {/* Layout compartilhado */}
-          <Route element={<Layout />}>
-            <Route path="tickets" element={<TicketList />} />
-            <Route path="tickets/new" element={<CreateTicket />} />
-            <Route path="tickets/:id" element={<TicketDetails />} />
-            <Route path="admin" element={<AdminTickets />} />
-          </Route>
-        </Route>
-
-        {/* Qualquer outra rota */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <TicketList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create"
+            element={
+              <ProtectedRoute>
+                <CreateTicket />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tickets/:id"
+            element={
+              <ProtectedRoute>
+                <TicketDetails />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminTickets />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
   );
 }

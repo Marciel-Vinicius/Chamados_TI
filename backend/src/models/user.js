@@ -3,6 +3,10 @@ module.exports = (sequelize, DataTypes) => {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     email: { type: DataTypes.STRING, unique: true, allowNull: false },
     password: { type: DataTypes.STRING, allowNull: false },
-    role: { type: DataTypes.ENUM('common','TI'), defaultValue: 'common' }
+    role: { type: DataTypes.ENUM('common', 'TI'), defaultValue: 'common' },
+    emailVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
+    verificationToken: { type: DataTypes.STRING },
+    resetPasswordToken: { type: DataTypes.STRING },
+    resetPasswordExpires: { type: DataTypes.DATE }
   });
 };

@@ -5,8 +5,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-  },
-  define: {
-    'process.env': process.env
+    proxy: {
+      // tudo que bater em /auth e /tickets será enviado ao back
+      '/auth': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/tickets': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    }
   }
 });

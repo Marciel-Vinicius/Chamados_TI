@@ -1,57 +1,28 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
-export default function Layout() {
+export default function Layout({ children }) {
     const navigate = useNavigate();
-    const role = localStorage.getItem('role');
 
-    const handleLogout = () => {
-        localStorage.clear();
+    function handleLogout() {
+        localStorage.removeItem('token');
+        delete axios.defaults.headers.common['Authorization'];
         navigate('/login');
-    };
+    }
 
     return (
-        <div className="min-h-screen flex flex-col bg-gray-100">
-            <header className="bg-blue-600 text-white flex items-center justify-between px-6 py-4 shadow-lg">
-                <h1 className="text-2xl font-semibold">Sistema de Chamados TI</h1>
-                <nav className="space-x-4">
-                    <NavLink
-                        to="/tickets"
-                        className={({ isActive }) =>
-                            (isActive ? 'underline ' : '') + 'hover:opacity-80'
-                        }
-                    >
-                        Meus Chamados
-                    </NavLink>
-                    <NavLink
-                        to="/tickets/new"
-                        className={({ isActive }) =>
-                            (isActive ? 'underline ' : '') + 'hover:opacity-80'
-                        }
-                    >
-                        Novo Chamado
-                    </NavLink>
-                    {role === 'TI' && (
-                        <NavLink
-                            to="/admin"
-                            className={({ isActive }) =>
-                                (isActive ? 'underline ' : '') + 'hover:opacity-80'
-                            }
-                        >
-                            Painel TI
-                        </NavLink>
-                    )}
+        <>
+            <header className="header">
+                <nav className="nav">
+                    <Link to="/">Chamados</Link>
+                    <Link to="/create">Novo Chamado</Link>
+                    <Link to="/admin">Admin TI</Link>
                 </nav>
-                <button
-                    onClick={handleLogout}
-                    className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded transition"
-                >
-                    Logout
-                </button>
+                <button onClick={handleLogout}>Logout</button>
             </header>
-
-            <main className="flex-1 p-6">
-                <Outlet />
+            <main className="main">
+                {children}
             </main>
-        </div>
+        </>
     );
 }

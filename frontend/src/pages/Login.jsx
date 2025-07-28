@@ -5,35 +5,32 @@ import { useNavigate, Link } from 'react-router-dom';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL;
 
-  const handleSubmit = async (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
     try {
-      const res = await axios.post(
-        `${API_URL}/auth/login`,
-        { email, password }
-      );
-      localStorage.setItem('token', res.data.token);
-      const decoded = JSON.parse(atob(res.data.token.split('.')[1]));
-      localStorage.setItem('role', decoded.role || 'common');
+      const res = await axios.post('/auth/login', { email, password });
+      const { token } = res.data;
+      localStorage.setItem('token', token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       navigate('/');
     } catch (err) {
-      alert('Login falhou');
+      setError(err.response?.data?.message || '❌ Erro ao entrar.');
     }
-  };
+  }
 
   return (
-    <div className="flex items-center justify-center h-screen">
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-md w-80">
-        <h2 className="text-2xl mb-4">Login</h2>
+    <div className="container">
+      <h1>Login</h1>
+      {error && <p className="message" style={{ color: 'red' }}>{error}</p>}
+      <form onSubmit={handleSubmit}>
         <input
           type="email"
-          placeholder="Email"
+          placeholder="E‑mail"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          className="w-full mb-3 p-2 border rounded"
           required
         />
         <input
@@ -41,22 +38,12 @@ export default function Login() {
           placeholder="Senha"
           value={password}
           onChange={e => setPassword(e.target.value)}
-          className="w-full mb-3 p-2 border rounded"
           required
         />
-        <button
-          type="submit"
-          className="w-full p-2 bg-blue-600 text-white rounded"
-        >
-          Entrar
-        </button>
-        <p className="mt-4 text-center">
-          Não tem conta?{' '}
-          <Link to="/register" className="text-blue-600 hover:underline">
-            Crie uma aqui
-          </Link>
-        </p>
+        <button type="submit">Entrar</button>
       </form>
+      <p><Link to="/forgot-password">Esqueceu a senha?</Link></p>
+      <p>Ainda não tem conta? <Link to="/register">Cadastre‑se</Link></p>
     </div>
   );
 }
