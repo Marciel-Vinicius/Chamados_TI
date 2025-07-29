@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
     role: { type: DataTypes.ENUM('common', 'TI'), defaultValue: 'common' },
     emailVerified: { type: DataTypes.BOOLEAN, defaultValue: false },
     verificationToken: { type: DataTypes.STRING },
+    verificationTokenExpires: { type: DataTypes.DATE },
     resetPasswordToken: { type: DataTypes.STRING },
     resetPasswordExpires: { type: DataTypes.DATE }
   });

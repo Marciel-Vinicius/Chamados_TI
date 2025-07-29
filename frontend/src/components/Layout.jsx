@@ -11,18 +11,25 @@ export default function Layout({ children }) {
     }
 
     return (
-        <>
-            <header className="header">
-                <nav className="nav">
-                    <Link to="/">Chamados</Link>
-                    <Link to="/create">Novo Chamado</Link>
-                    <Link to="/admin">Admin TI</Link>
-                </nav>
-                <button onClick={handleLogout}>Logout</button>
+        <div className="min-h-screen bg-gray-100">
+            <header className="bg-white shadow">
+                <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+                    <nav className="space-x-4">
+                        <Link to="/" className="text-gray-600 hover:text-blue-500">Chamados</Link>
+                        <Link to="/create" className="text-gray-600 hover:text-blue-500">Novo Chamado</Link>
+                        <Link to="/admin" className="text-gray-600 hover:text-blue-500">Admin TI</Link>
+                    </nav>
+                    <button
+                        onClick={handleLogout}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+                    >
+                        Logout
+                    </button>
+                </div>
             </header>
-            <main className="main">
+            <main className="container mx-auto px-4 py-8">
                 {children}
             </main>
-        </>
+        </div>
     );
 }

@@ -17,18 +17,19 @@ export default function Login() {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.message || '❌ Erro ao entrar.');
+      setError(err.response?.data?.message || 'Erro ao entrar.');
     }
   }
 
   return (
-    <div className="container">
-      <h1>Login</h1>
-      {error && <p className="message" style={{ color: 'red' }}>{error}</p>}
+    <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow">
+      <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+      {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
       <form onSubmit={handleSubmit}>
         <input
           type="email"
-          placeholder="E‑mail"
+          placeholder="E-mail"
+          className="w-full border border-gray-300 p-2 rounded mb-4"
           value={email}
           onChange={e => setEmail(e.target.value)}
           required
@@ -36,14 +37,24 @@ export default function Login() {
         <input
           type="password"
           placeholder="Senha"
+          className="w-full border border-gray-300 p-2 rounded mb-4"
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
         />
-        <button type="submit">Entrar</button>
+        <button
+          type="submit"
+          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded mb-4"
+        >
+          Entrar
+        </button>
       </form>
-      <p><Link to="/forgot-password">Esqueceu a senha?</Link></p>
-      <p>Ainda não tem conta? <Link to="/register">Cadastre‑se</Link></p>
+      <div className="text-center">
+        <Link to="/forgot-password" className="text-blue-500 hover:underline">Esqueceu a senha?</Link>
+      </div>
+      <p className="text-center mt-4">
+        Ainda não tem conta? <Link to="/register" className="text-blue-500 hover:underline">Cadastre-se</Link>
+      </p>
     </div>
   );
 }
