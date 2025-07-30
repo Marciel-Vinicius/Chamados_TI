@@ -1,16 +1,50 @@
 // frontend/src/pages/MyTickets.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 
 export default function MyTickets() {
     const [tickets, setTickets] = useState([]);
+    const prevCount = useRef(null);
 
+    // fetch inicial + polling + foco
     useEffect(() => {
-        const tk = localStorage.getItem('token');
-        axios.defaults.headers.common['Authorization'] = `Bearer ${tk}`;
-        axios.get('/tickets').then(res => setTickets(res.data));
+        fetchTickets(false);
+        const iv = setInterval(() => fetchTickets(true), 5000);
+        const onFocus = () => fetchTickets(false);
+        window.addEventListener('focus', onFocus);
+        return () => {
+            clearInterval(iv);
+            window.removeEventListener('focus', onFocus);
+        };
     }, []);
+
+    const fetchTickets = async (notify) => {
+        try {
+            const res = await axios.get('/tickets');
+            const list = res.data;
+
+            // inicializa prevCount
+            if (prevCount.current === null) {
+                prevCount.current = list.length;
+            }
+
+            // notificar novos
+            if (notify && Notification.permission === 'granted' && list.length > prevCount.current) {
+                const added = list.slice(prevCount.current);
+                added.forEach(t =>
+                    new Notification('Novo chamado criado', {
+                        body: t.title
+                    })
+                );
+            }
+
+            prevCount.current = list.length;
+            setTickets(list);
+        } catch (err) {
+            console.error('Erro ao buscar meus chamados:', err);
+        }
+    };
 
     return (
         <div>
@@ -28,7 +62,9 @@ export default function MyTickets() {
                             <span className="font-medium">{t.title}</span>
                             <span className="text-sm text-gray-500">{t.status}</span>
                         </div>
-                        <div className="text-sm text-gray-600">{t.category} • {t.priority}</div>
+                        <div className="text-sm text-gray-600">
+                            {t.category} • {t.priority}
+                        </div>
                     </Link>
                 ))
             )}

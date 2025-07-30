@@ -20,12 +20,12 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// Todas as rotas deste arquivo exigem autenticação
+// Aplica autenticação em todas as rotas
 router.use(auth);
 
 /**
  * 1) Criar chamado
- * POST /tickets
+ *    POST /tickets
  */
 router.post('/', upload.single('attachment'), async (req, res) => {
   try {
@@ -50,7 +50,7 @@ router.post('/', upload.single('attachment'), async (req, res) => {
 
 /**
  * 2) Listar meus chamados
- * GET /tickets
+ *    GET /tickets
  */
 router.get('/', async (req, res) => {
   try {
@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
 
 /**
  * 3) Listar todos os chamados (TI)
- * GET /tickets/all
+ *    GET /tickets/all
  */
 router.get('/all', role(['TI']), async (req, res) => {
   try {
@@ -106,7 +106,7 @@ router.get('/all', role(['TI']), async (req, res) => {
 
 /**
  * 4) Detalhar um chamado
- * GET /tickets/:id
+ *    GET /tickets/:id
  */
 router.get('/:id', async (req, res) => {
   try {
@@ -116,7 +116,6 @@ router.get('/:id', async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ message: 'Chamado não encontrado.' });
     }
-    // Usuário comum só vê seus próprios chamados
     if (req.user.role === 'common' && ticket.userId !== req.user.id) {
       return res.status(403).json({ message: 'Sem permissão.' });
     }
@@ -131,7 +130,7 @@ router.get('/:id', async (req, res) => {
 
 /**
  * 5) Atualizar status (TI)
- * PUT /tickets/:id/status
+ *    PUT /tickets/:id/status
  */
 router.put('/:id/status', role(['TI']), async (req, res) => {
   try {
@@ -152,12 +151,18 @@ router.put('/:id/status', role(['TI']), async (req, res) => {
 });
 
 /**
- * 6) Adicionar comentário (TI)
- * POST /tickets/:id/comments
+ * 6) Adicionar comentário (qualquer usuário autenticado)
+ *    POST /tickets/:id/comments
  */
-router.post('/:id/comments', role(['TI']), async (req, res) => {
+router.post('/:id/comments', async (req, res) => {
   try {
     const { content } = req.body;
+    // só permite comentário se for owner ou TI
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket) return res.status(404).json({ message: 'Chamado não encontrado' });
+    if (req.user.role === 'common' && ticket.userId !== req.user.id) {
+      return res.status(403).json({ message: 'Sem permissão para comentar.' });
+    }
     const comment = await Comment.create({
       content,
       ticketId: req.params.id,
@@ -174,7 +179,7 @@ router.post('/:id/comments', role(['TI']), async (req, res) => {
 
 /**
  * 7) Listar comentários
- * GET /tickets/:id/comments
+ *    GET /tickets/:id/comments
  */
 router.get('/:id/comments', async (req, res) => {
   try {
