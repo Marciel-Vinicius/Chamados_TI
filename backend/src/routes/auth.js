@@ -10,9 +10,9 @@ const { User } = require('../models');
 // 1) Registro com código por e‑mail
 router.post('/register', async (req, res) => {
   console.log('REGISTER BODY:', req.body);
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
+  const { email, password, setor } = req.body;
+  if (!email || !password || !setor) {
+    return res.status(400).json({ message: 'Email, senha e setor são obrigatórios.' });
   }
   try {
     const exists = await User.findOne({ where: { email } });
@@ -26,6 +26,7 @@ router.post('/register', async (req, res) => {
     await User.create({
       email,
       password: hashed,
+      setor,                         // campo setor adicionado
       verificationToken: code,
       verificationTokenExpires: expires
     });

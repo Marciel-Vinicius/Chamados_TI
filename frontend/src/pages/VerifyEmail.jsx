@@ -1,54 +1,52 @@
-import { useState, useEffect } from 'react';
+// frontend/src/pages/VerifyEmail.jsx
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 
 export default function VerifyEmail() {
+    const location = useLocation();
+    const navigate = useNavigate();
     const [code, setCode] = useState('');
     const [message, setMessage] = useState('');
-    const [searchParams] = useSearchParams();
-    const email = searchParams.get('email') || '';
-    const navigate = useNavigate();
+    const email = location.state?.email || '';
 
-    useEffect(() => {
-        if (!email) navigate('/register');
-    }, [email, navigate]);
-
-    async function handleVerify(e) {
+    async function handleSubmit(e) {
         e.preventDefault();
+        setMessage('');
         try {
-            const res = await axios.post('/auth/verify-email', { email, code });
-            setMessage(res.data.message);
+            await axios.post('/auth/verify-email', { email, code });
+            setMessage('E‑mail verificado! Redirecionando...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {
-            console.error('VERIFY ERR:', err.response || err);
             setMessage(err.response?.data?.message || 'Erro na verificação.');
         }
     }
 
     return (
-        <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow">
-            <h1 className="text-2xl font-bold text-center mb-6">Verificar Conta</h1>
-            <p className="text-center mb-4">Enviamos um código para <b>{email}</b>.</p>
-            {message && <p className="text-center mb-4">{message}</p>}
-            <form onSubmit={handleVerify}>
-                <input
-                    type="text"
-                    placeholder="Código de verificação"
-                    className="w-full border border-gray-300 p-2 rounded mb-4"
-                    value={code}
-                    onChange={e => setCode(e.target.value)}
-                    required
-                />
+        <div className="max-w-md mx-auto mt-12 p-6 bg-white rounded-2xl shadow-lg">
+            <h2 className="text-2xl font-semibold mb-6 text-center">Verificar E‑mail</h2>
+            <p className="mb-4 text-center text-sm text-gray-600">
+                Código enviado para <span className="font-medium">{email}</span>
+            </p>
+            {message && <div className="mb-4 text-center text-red-500">{message}</div>}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium mb-1">Código de Verificação</label>
+                    <input
+                        type="text"
+                        value={code}
+                        onChange={e => setCode(e.target.value)}
+                        placeholder="000000"
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                    />
+                </div>
                 <button
                     type="submit"
-                    className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
                 >
                     Verificar
                 </button>
             </form>
-            <p className="text-center mt-4">
-                Não recebeu o código? <Link to="/register" className="text-blue-500 hover:underline">Cadastrar novamente</Link>
-            </p>
         </div>
     );
 }

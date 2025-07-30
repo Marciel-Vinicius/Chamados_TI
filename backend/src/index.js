@@ -1,29 +1,37 @@
+// backend/src/index.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-const { sequelize } = require('./config/database');
+const path = require('path');
+const { sequelize } = require('./models');
 const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
-const path = require('path');
+const authMiddleware = require('./middleware/auth');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Habilita CORS só da URL do front
-app.use(cors({ origin: process.env.FRONTEND_URL }));
-app.use(bodyParser.json());
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// 1) Habilita CORS para o frontend em Vite (http://localhost:5173)
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}));
 
+// 2) Body parser JSON
+app.use(express.json());
+
+// 3) Rota estática para uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// 4) Rotas de autenticação e de tickets
 app.use('/auth', authRoutes);
-app.use('/tickets', ticketRoutes);
+app.use('/tickets', authMiddleware, ticketRoutes);
 
-sequelize.sync({ alter: true })
-  .then(() => {
-    console.log(`Database synced, iniciando servidor na porta ${PORT}`);
-    // garante que o servidor escute em todas interfaces
-    app.listen(PORT, '0.0.0.0', () =>
-      console.log(`🚀 Server rodando em http://localhost:${PORT}`)
-    );
-  })
-  .catch(err => console.error(err));
+// 5) Sincroniza o banco e inicia o servidor
+(async () => {
+  await sequelize.sync();
+  console.log('✅ Banco sincronizado');
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () =>
+    console.log(`🚀 Backend rodando em http://localhost:${PORT}`)
+  );
+})();
