@@ -10,7 +10,7 @@ export default function AdminTickets() {
   const prevTicketsCount = useRef(null);
   const API = import.meta.env.VITE_API_URL;
 
-  // Configura token e solicita permissões de notificação
+  // configuração inicial (token + notificação)
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -19,15 +19,45 @@ export default function AdminTickets() {
     }
   }, []);
 
-  // Fetch inicial, polling e foco
+  // Fetch inicial, SSE, polling e foco
   useEffect(() => {
     fetchTickets(false);
+
+    // SSE para novos chamados instantâneos
+    let es;
+    if (window.EventSource) {
+      es = new EventSource(`${API}/tickets/stream`);
+      es.addEventListener('new-ticket', (e) => {
+        try {
+          const ticket = JSON.parse(e.data);
+          setTickets(prev => {
+            if (prev.some(t => t.id === ticket.id)) {
+              return prev.map(t => (t.id === ticket.id ? ticket : t));
+            }
+            return [ticket, ...prev];
+          });
+          if (Notification.permission === 'granted') {
+            new Notification('Novo chamado recebido', {
+              body: ticket.title
+            });
+          }
+        } catch (err) {
+          console.error('Erro ao processar SSE new-ticket:', err);
+        }
+      });
+      es.onerror = () => {
+        es.close();
+      };
+    }
+
+    // fallback/polling a cada 5s para garantir atualização
     const iv = setInterval(() => fetchTickets(true), 5000);
     const onFocus = () => fetchTickets(false);
     window.addEventListener('focus', onFocus);
     return () => {
       clearInterval(iv);
       window.removeEventListener('focus', onFocus);
+      es && es.close();
     };
   }, []);
 
@@ -36,12 +66,10 @@ export default function AdminTickets() {
       const res = await axios.get(`${API}/tickets/all`);
       const list = res.data;
 
-      // inicializa contador
       if (prevTicketsCount.current === null) {
         prevTicketsCount.current = list.length;
       }
 
-      // notifica novos chamados
       if (
         notify &&
         Notification.permission === 'granted' &&
@@ -49,7 +77,7 @@ export default function AdminTickets() {
       ) {
         const added = list.slice(prevTicketsCount.current);
         added.forEach(t =>
-          new Notification('Novo chamado recebido', {
+          new Notification('Novo chamado no Painel TI', {
             body: t.title
           })
         );
@@ -57,7 +85,7 @@ export default function AdminTickets() {
 
       prevTicketsCount.current = list.length;
       setTickets(list);
-      // atualiza seleção se ainda aberto anteriormente
+
       if (selected) {
         const updated = list.find(t => t.id === selected.id);
         if (updated) setSelected(updated);
@@ -82,13 +110,14 @@ export default function AdminTickets() {
   async function changeStatus(id, status) {
     try {
       const res = await axios.put(`${API}/tickets/${id}/status`, { status });
-      // atualiza lista e detalhes
       setTickets(prev => prev.map(t => (t.id === id ? res.data : t)));
       if (selected?.id === id) {
         setSelected(res.data);
-        new Notification('Status atualizado', {
-          body: `Chamado "${res.data.title}" agora está ${res.data.status}`
-        });
+        if (Notification.permission === 'granted') {
+          new Notification('Status atualizado', {
+            body: `Chamado "${res.data.title}" agora está ${res.data.status}`
+          });
+        }
       }
     } catch (err) {
       console.error('Erro ao atualizar status:', err);
@@ -104,9 +133,11 @@ export default function AdminTickets() {
       );
       setComments(prev => [...prev, res.data]);
       setNewComment('');
-      new Notification('Comentário adicionado', {
-        body: res.data.content
-      });
+      if (Notification.permission === 'granted') {
+        new Notification('Comentário adicionado', {
+          body: res.data.content
+        });
+      }
     } catch (err) {
       console.error('Erro ao enviar comentário:', err);
     }
@@ -115,6 +146,7 @@ export default function AdminTickets() {
   return (
     <div className="max-w-6xl mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">Painel TI</h2>
+
       <div className="flex gap-6">
         {/* Lista de chamados */}
         <div
@@ -146,7 +178,9 @@ export default function AdminTickets() {
         >
           {selected ? (
             <>
-              <h3 className="text-xl font-semibold mb-2">{selected.title}</h3>
+              <h3 className="text-xl font-semibold mb-2">
+                {selected.title}
+              </h3>
               <p className="text-gray-600 mb-4">
                 {selected.category} • {selected.priority}
               </p>
@@ -190,9 +224,7 @@ export default function AdminTickets() {
                       key={c.id}
                       className="border p-3 rounded"
                     >
-                      <p className="text-gray-800">
-                        {c.content}
-                      </p>
+                      <p className="text-gray-800">{c.content}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(c.createdAt).toLocaleString('pt-BR')}
                       </p>
