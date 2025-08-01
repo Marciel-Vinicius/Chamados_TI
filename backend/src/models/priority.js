@@ -6,15 +6,13 @@ module.exports = (sequelize, DataTypes) => {
             primaryKey: true,
             autoIncrement: true
         },
-        name: {
-            type: DataTypes.STRING,
-            allowNull: false,
-            unique: true
-        }
+        name: { type: DataTypes.STRING, allowNull: false, unique: true }
     });
 
     Priority.associate = models => {
-        Priority.hasMany(models.Ticket, { foreignKey: 'priorityId' });
+        if (models.Ticket) {
+            Priority.hasMany(models.Ticket, { foreignKey: 'priorityId' });
+        }
     };
 
     return Priority;

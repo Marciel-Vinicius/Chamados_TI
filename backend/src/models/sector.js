@@ -1,6 +1,6 @@
-// backend/src/models/category.js
+// backend/src/models/sector.js
 module.exports = (sequelize, DataTypes) => {
-    const Category = sequelize.define('Category', {
+    const Sector = sequelize.define('Sector', {
         id: {
             type: DataTypes.INTEGER,
             primaryKey: true,
@@ -9,11 +9,11 @@ module.exports = (sequelize, DataTypes) => {
         name: { type: DataTypes.STRING, allowNull: false, unique: true }
     });
 
-    Category.associate = models => {
-        if (models.Ticket) {
-            Category.hasMany(models.Ticket, { foreignKey: 'categoryId' });
+    Sector.associate = models => {
+        if (models.User) {
+            Sector.hasMany(models.User, { foreignKey: 'sectorId' });
         }
     };
 
-    return Category;
+    return Sector;
 };

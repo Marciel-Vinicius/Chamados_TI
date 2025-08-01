@@ -15,52 +15,31 @@ export default function NewTicket() {
     });
     const [file, setFile] = useState(null);
     const [msg, setMsg] = useState('');
-    const [reasons, setReasons] = useState([]);
     const [categories, setCategories] = useState([]);
     const [priorities, setPriorities] = useState([]);
+    const [reasons, setReasons] = useState([]);
     const [loadingMeta, setLoadingMeta] = useState(true);
-    const [metaError, setMetaError] = useState('');
-    const [authError, setAuthError] = useState('');
     const navigate = useNavigate();
     const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-    // aplica token globalmente
     useEffect(() => {
         const token = localStorage.getItem('token');
-        if (token) {
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        }
-    }, []);
+        if (token) axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-    // busca categorias/prioridades/motivos
-    useEffect(() => {
         async function loadMeta() {
             setLoadingMeta(true);
-            setMetaError('');
-            setAuthError('');
             try {
-                const [rRes, cRes, pRes] = await Promise.all([
-                    axios.get(`${API}/reasons`),
+                const [cRes, pRes, rRes] = await Promise.all([
                     axios.get(`${API}/categories`),
-                    axios.get(`${API}/priorities`)
+                    axios.get(`${API}/priorities`),
+                    axios.get(`${API}/reasons`)
                 ]);
-                setReasons(Array.isArray(rRes.data) ? rRes.data : []);
                 setCategories(Array.isArray(cRes.data) ? cRes.data : []);
                 setPriorities(Array.isArray(pRes.data) ? pRes.data : []);
-                if (!Array.isArray(cRes.data) || !Array.isArray(pRes.data)) {
-                    setMetaError('Resposta inesperada do servidor para categorias ou prioridades.');
-                }
+                setReasons(Array.isArray(rRes.data) ? rRes.data : []);
             } catch (err) {
-                console.error('Erro carregando categorias/prioridades/motivos:', err);
-                if (err.response) {
-                    if (err.response.status === 401 || err.response.status === 403) {
-                        setAuthError('Você não está autenticado ou não tem permissão. Faça login novamente.');
-                    } else {
-                        setMetaError('Falha ao carregar categorias/prioridades/motivos. Veja console.');
-                    }
-                } else {
-                    setMetaError('Erro de rede ao buscar metadados.');
-                }
+                console.error('Erro carregando metadados:', err);
+                setMsg('Falha ao carregar categorias/prioridades/motivos.');
             } finally {
                 setLoadingMeta(false);
             }
@@ -71,65 +50,42 @@ export default function NewTicket() {
     const onChange = e => {
         const { name, value } = e.target;
         setData(prev => ({ ...prev, [name]: value }));
+        if (name === 'categoryId') setData(prev => ({ ...prev, category: '' }));
+        if (name === 'priorityId') setData(prev => ({ ...prev, priority: '' }));
     };
 
     const onFileChange = e => setFile(e.target.files[0]);
 
     const onSubmit = async e => {
         e.preventDefault();
-        setMsg('');
-        if (!data.title.trim() || !data.description.trim()) {
-            setMsg('Título e descrição são obrigatórios.');
-            return;
-        }
-
         const form = new FormData();
         form.append('title', data.title);
         form.append('description', data.description);
 
-        if (data.categoryId) {
-            form.append('categoryId', data.categoryId);
-        } else if (data.category) {
-            form.append('category', data.category);
-        }
+        if (data.categoryId) form.append('categoryId', data.categoryId);
+        else if (data.category) form.append('category', data.category);
 
-        if (data.priorityId) {
-            form.append('priorityId', data.priorityId);
-        } else if (data.priority) {
-            form.append('priority', data.priority);
-        }
+        if (data.priorityId) form.append('priorityId', data.priorityId);
+        else if (data.priority) form.append('priority', data.priority);
 
-        if (data.reasonId) {
-            form.append('reasonId', data.reasonId);
-        }
-
-        if (file) {
-            form.append('attachment', file);
-        }
+        if (data.reasonId) form.append('reasonId', data.reasonId);
+        if (file) form.append('attachment', file);
 
         try {
             await axios.post(`${API}/tickets`, form, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
-            navigate('/my-tickets');
+            navigate('/tickets');
         } catch (err) {
-            console.error('Erro ao abrir chamado:', err);
-            if (err.response) {
-                setMsg(err.response.data?.message || `Erro: ${err.response.status}`);
-            } else {
-                setMsg('Erro de rede ao enviar chamado.');
-            }
+            console.error(err);
+            setMsg('Erro ao enviar chamado.');
         }
     };
 
     return (
         <div className="max-w-md mx-auto p-6">
             <h2 className="text-2xl font-semibold mb-4">Novo Chamado</h2>
-
-            {authError && <div className="mb-2 p-2 bg-red-100 text-red-800 rounded">{authError}</div>}
-            {metaError && <div className="mb-2 p-2 bg-yellow-100 text-yellow-800 rounded">{metaError}</div>}
-            {msg && <div className="mb-2 p-2 bg-red-50 text-red-700 rounded">{msg}</div>}
-
+            {msg && <div className="mb-3 text-red-600">{msg}</div>}
             <form onSubmit={onSubmit} className="bg-white shadow rounded p-6 space-y-4">
                 <div>
                     <label className="block text-sm font-medium mb-1">Título</label>
@@ -139,19 +95,18 @@ export default function NewTicket() {
                         onChange={onChange}
                         className="w-full border px-3 py-2 rounded"
                         required
-                        placeholder="Resumo do problema"
                     />
                 </div>
+
                 <div>
                     <label className="block text-sm font-medium mb-1">Descrição</label>
                     <textarea
                         name="description"
                         value={data.description}
                         onChange={onChange}
+                        rows={4}
                         className="w-full border px-3 py-2 rounded"
                         required
-                        rows={5}
-                        placeholder="Detalhe o que está acontecendo"
                     />
                 </div>
 
@@ -159,16 +114,13 @@ export default function NewTicket() {
                     <div>
                         <label className="block text-sm font-medium mb-1">Categoria</label>
                         {loadingMeta ? (
-                            <div className="text-sm text-gray-500">Carregando categorias...</div>
+                            <div className="text-sm text-gray-500">Carregando...</div>
                         ) : (
                             <>
                                 <select
                                     name="categoryId"
                                     value={data.categoryId}
-                                    onChange={e => {
-                                        onChange(e);
-                                        setData(prev => ({ ...prev, category: '' }));
-                                    }}
+                                    onChange={onChange}
                                     className="w-full border px-3 py-2 rounded"
                                 >
                                     <option value="">-- Selecione --</option>
@@ -194,16 +146,13 @@ export default function NewTicket() {
                     <div>
                         <label className="block text-sm font-medium mb-1">Prioridade</label>
                         {loadingMeta ? (
-                            <div className="text-sm text-gray-500">Carregando prioridades...</div>
+                            <div className="text-sm text-gray-500">Carregando...</div>
                         ) : (
                             <>
                                 <select
                                     name="priorityId"
                                     value={data.priorityId}
-                                    onChange={e => {
-                                        onChange(e);
-                                        setData(prev => ({ ...prev, priority: '' }));
-                                    }}
+                                    onChange={onChange}
                                     className="w-full border px-3 py-2 rounded"
                                 >
                                     <option value="">-- Selecione --</option>
@@ -230,7 +179,7 @@ export default function NewTicket() {
                 <div>
                     <label className="block text-sm font-medium mb-1">Motivo (opcional)</label>
                     {loadingMeta ? (
-                        <div className="text-sm text-gray-500">Carregando motivos...</div>
+                        <div className="text-sm text-gray-500">Carregando...</div>
                     ) : (
                         <select
                             name="reasonId"
@@ -244,20 +193,16 @@ export default function NewTicket() {
                                     {r.name}
                                 </option>
                             ))}
-                            <option value="">Outro</option>
                         </select>
                     )}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Anexo (opcional)</label>
-                    <input type="file" onChange={onFileChange} />
+                    <label className="block text-sm font-medium mb-1">Anexo</label>
+                    <input type="file" onChange={e => setFile(e.target.files[0])} />
                 </div>
 
-                <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                >
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded" type="submit">
                     Enviar Chamado
                 </button>
             </form>

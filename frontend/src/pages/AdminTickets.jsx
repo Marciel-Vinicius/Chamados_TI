@@ -13,6 +13,8 @@ export default function AdminTickets() {
   const [newCategory, setNewCategory] = useState('');
   const [priorities, setPriorities] = useState([]);
   const [newPriority, setNewPriority] = useState('');
+  const [sectors, setSectors] = useState([]);
+  const [newSector, setNewSector] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const prevTicketsCount = useRef(null);
   const reconnectDelay = useRef(1000);
@@ -41,9 +43,6 @@ export default function AdminTickets() {
   // carregamento inicial e SSE
   useEffect(() => {
     fetchAll();
-    fetchReasons();
-    fetchCategories();
-    fetchPriorities();
     setupSSE();
 
     const interval = setInterval(() => fetchTickets(true), 5000);
@@ -55,7 +54,13 @@ export default function AdminTickets() {
   }, [selected]);
 
   async function fetchAll() {
-    await Promise.all([fetchTickets(false), fetchReasons(), fetchCategories(), fetchPriorities()]);
+    await Promise.all([
+      fetchTickets(false),
+      fetchReasons(),
+      fetchCategories(),
+      fetchPriorities(),
+      fetchSectors()
+    ]);
   }
 
   async function fetchTickets(notify) {
@@ -123,6 +128,15 @@ export default function AdminTickets() {
     }
   }
 
+  async function fetchSectors() {
+    try {
+      const res = await axios.get(`${API}/sectors`);
+      setSectors(res.data);
+    } catch (err) {
+      console.warn('Erro ao carregar setores', err);
+    }
+  }
+
   async function addReason() {
     if (!newReason.trim()) return;
     try {
@@ -153,6 +167,17 @@ export default function AdminTickets() {
       setNewPriority('');
     } catch (err) {
       console.error('Erro ao adicionar prioridade:', err);
+    }
+  }
+
+  async function addSector() {
+    if (!newSector.trim()) return;
+    try {
+      const res = await axios.post(`${API}/sectors`, { name: newSector.trim() });
+      setSectors(prev => [...prev, res.data]);
+      setNewSector('');
+    } catch (err) {
+      console.error('Erro ao adicionar setor:', err);
     }
   }
 
@@ -242,7 +267,7 @@ export default function AdminTickets() {
         <div className="mb-4 p-2 bg-red-100 text-red-800 rounded">{errorMsg}</div>
       )}
 
-      <div className="grid grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         {/* Motivos */}
         <div className="p-4 border rounded shadow">
           <h3 className="text-lg font-semibold mb-2">Motivos de Chamado</h3>
@@ -256,13 +281,14 @@ export default function AdminTickets() {
             <button
               onClick={addReason}
               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+              type="button"
             >
               Adicionar
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {reasons.length
-              ? reasons.map(r => (
+            {reasons.length ? (
+              reasons.map(r => (
                 <div
                   key={r.id}
                   className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
@@ -270,7 +296,9 @@ export default function AdminTickets() {
                   {r.name}
                 </div>
               ))
-              : <div className="text-sm text-gray-500">Nenhum motivo</div>}
+            ) : (
+              <div className="text-sm text-gray-500">Nenhum motivo</div>
+            )}
           </div>
         </div>
 
@@ -287,13 +315,14 @@ export default function AdminTickets() {
             <button
               onClick={addCategory}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
+              type="button"
             >
               Adicionar
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {categories.length
-              ? categories.map(c => (
+            {categories.length ? (
+              categories.map(c => (
                 <div
                   key={c.id}
                   className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
@@ -301,7 +330,9 @@ export default function AdminTickets() {
                   {c.name}
                 </div>
               ))
-              : <div className="text-sm text-gray-500">Nenhuma categoria</div>}
+            ) : (
+              <div className="text-sm text-gray-500">Nenhuma categoria</div>
+            )}
           </div>
         </div>
 
@@ -318,13 +349,14 @@ export default function AdminTickets() {
             <button
               onClick={addPriority}
               className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
+              type="button"
             >
               Adicionar
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {priorities.length
-              ? priorities.map(p => (
+            {priorities.length ? (
+              priorities.map(p => (
                 <div
                   key={p.id}
                   className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
@@ -332,7 +364,43 @@ export default function AdminTickets() {
                   {p.name}
                 </div>
               ))
-              : <div className="text-sm text-gray-500">Nenhuma prioridade</div>}
+            ) : (
+              <div className="text-sm text-gray-500">Nenhuma prioridade</div>
+            )}
+          </div>
+        </div>
+
+        {/* Setores */}
+        <div className="p-4 border rounded shadow">
+          <h3 className="text-lg font-semibold mb-2">Setores</h3>
+          <div className="flex gap-2 mb-2">
+            <input
+              placeholder="Novo setor"
+              value={newSector}
+              onChange={e => setNewSector(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <button
+              onClick={addSector}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+              type="button"
+            >
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sectors.length ? (
+              sectors.map(s => (
+                <div
+                  key={s.id}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
+                >
+                  {s.name}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">Nenhum setor</div>
+            )}
           </div>
         </div>
       </div>

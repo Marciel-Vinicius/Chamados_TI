@@ -4,40 +4,41 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const transporter = require('../utils/mailer');
-const { User } = require('../models');
+const { User, Sector } = require('../models');
 
-function generateToken(user) {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET não configurado.');
-  return jwt.sign(
-    { id: user.id, role: user.role, email: user.email },
-    secret,
-    { expiresIn: '1d' }
-  );
+// Aviso se não tiver secret definido
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️ JWT_SECRET não está definido. O login pode falhar por isso.');
 }
 
-// registro com verificação por código
+// 1) Registro com código por e-mail
 router.post('/register', async (req, res) => {
   console.log('REGISTER BODY:', req.body);
+  const { email, password, sectorId } = req.body;
+  if (!email || !password || !sectorId) {
+    return res.status(400).json({ message: 'Email, senha e setor são obrigatórios.' });
+  }
+
   try {
-    let { email, password, setor } = req.body;
-    if (!email || !password || !setor) {
-      return res.status(400).json({ message: 'Email, senha e setor são obrigatórios.' });
-    }
-    email = email.trim().toLowerCase();
     const exists = await User.findOne({ where: { email } });
-    if (exists) return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
+    if (exists) {
+      return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
+    }
+
+    const sector = await Sector.findByPk(sectorId);
+    if (!sector) {
+      return res.status(400).json({ message: 'Setor inválido.' });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expires = Date.now() + 3600000; // 1h
+    const expires = Date.now() + 3600000; // 1 hora
 
-    const user = await User.create({
+    await User.create({
       email,
       password: hashed,
-      setor,
-      role: 'common',
-      emailVerified: false,
+      setor: sector.name, // legado
+      sectorId: sector.id,
       verificationToken: code,
       verificationTokenExpires: expires
     });
@@ -56,40 +57,39 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// verify-email
+// 2) Verificação de código de registro
 router.post('/verify-email', async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) {
+    return res.status(400).json({ message: 'Email e código são obrigatórios.' });
+  }
   try {
-    let { email, code } = req.body;
-    if (!email || !code) return res.status(400).json({ message: 'Email e código são obrigatórios.' });
-    email = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email, verificationToken: code } });
-    if (!user) return res.status(400).json({ message: 'Código inválido.' });
-    if (user.verificationTokenExpires < Date.now()) return res.status(400).json({ message: 'Código expirado.' });
-    if (user.emailVerified) return res.status(200).json({ message: 'E-mail já verificado.' });
-
+    if (!user) {
+      return res.status(400).json({ message: 'Código inválido.' });
+    }
+    if (user.verificationTokenExpires < Date.now()) {
+      return res.status(400).json({ message: 'Código expirado.' });
+    }
     user.emailVerified = true;
     user.verificationToken = null;
     user.verificationTokenExpires = null;
     await user.save();
-
-    const token = generateToken(user);
-    return res.json({
-      message: 'E-mail verificado com sucesso!',
-      token,
-      user: { id: user.id, email: user.email, role: user.role, setor: user.setor, emailVerified: user.emailVerified }
-    });
+    return res.json({ message: 'E-mail verificado com sucesso!' });
   } catch (err) {
     console.error('ERROR VERIFY EMAIL:', err);
     return res.status(500).json({ message: 'Erro interno na verificação.' });
   }
 });
 
-// login
+// 3) Login (só usuários verificados)
 router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
+  }
+
   try {
-    let { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
-    email = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email } });
     if (!user) return res.status(400).json({ message: 'Usuário não encontrado.' });
     if (!user.emailVerified) return res.status(400).json({ message: 'Verifique seu e-mail antes de entrar.' });
@@ -97,38 +97,42 @@ router.post('/login', async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: 'Senha incorreta.' });
 
-    const token = generateToken(user);
-    return res.json({
-      token,
-      user: { id: user.id, email: user.email, role: user.role, setor: user.setor, emailVerified: user.emailVerified }
-    });
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET não definido. Não é possível gerar token.');
+      return res.status(500).json({ message: 'Erro de configuração no servidor.' });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+    return res.json({ token });
   } catch (err) {
     console.error('ERROR LOGIN:', err);
     return res.status(500).json({ message: 'Erro interno no login.' });
   }
 });
 
-// forgot password
+// 4) Enviar código de recuperação de senha
 router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ message: 'Email é obrigatório.' });
   try {
-    let { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email é obrigatório.' });
-    email = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email } });
-    if (!user) return res.status(200).json({ message: 'Se existir, você receberá um e-mail.' });
-
+    if (!user) {
+      return res.status(200).json({ message: 'Se existir, você receberá um e-mail.' });
+    }
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetPasswordToken = code;
     user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
-
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Código para redefinição de senha',
       html: `<p>Seu código para redefinir a senha é <b>${code}</b>. Expira em 1 hora.</p>`
     });
-
     return res.json({ message: 'Código de recuperação enviado ao seu e-mail.' });
   } catch (err) {
     console.error('ERROR FORGOT PASSWORD:', err);
@@ -136,20 +140,21 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
-// reset password
+// 5) Redefinir senha com código
 router.post('/reset-password', async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ message: 'Email, código e nova senha são obrigatórios.' });
+  }
   try {
-    let { email, code, newPassword } = req.body;
-    if (!email || !code || !newPassword) return res.status(400).json({ message: 'Email, código e nova senha são obrigatórios.' });
-    email = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email, resetPasswordToken: code } });
-    if (!user || user.resetPasswordExpires < Date.now()) return res.status(400).json({ message: 'Código inválido ou expirado.' });
-
+    if (!user || user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: 'Código inválido ou expirado.' });
+    }
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();
-
     return res.json({ message: 'Senha redefinida com sucesso!' });
   } catch (err) {
     console.error('ERROR RESET PASSWORD:', err);
