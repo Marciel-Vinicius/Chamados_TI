@@ -7,18 +7,14 @@ export default function NotificationBell() {
     const unread = notifications.filter(n => !n.read);
     const [open, setOpen] = useState(false);
 
-    const handleToggle = () => {
+    const toggle = () => {
         setOpen(o => !o);
         markAllRead();
     };
 
     return (
         <div className="relative">
-            <button
-                onClick={handleToggle}
-                className="relative p-2 focus:outline-none"
-                aria-label="Notificações"
-            >
+            <button onClick={toggle} className="relative p-2">
                 <span className="text-2xl">🔔</span>
                 {unread.length > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
@@ -26,23 +22,17 @@ export default function NotificationBell() {
                     </span>
                 )}
             </button>
-
             {open && (
-                <div className="absolute right-0 mt-2 w-96 bg-white border rounded shadow-lg z-50">
+                <div className="absolute right-0 mt-2 w-80 bg-white border rounded shadow-lg z-50">
                     <div className="flex justify-between items-center p-2 border-b">
                         <span className="font-semibold">Notificações</span>
-                        <button
-                            onClick={() => markAllRead()}
-                            className="text-sm text-blue-600"
-                        >
-                            Marcar todas como lidas
+                        <button onClick={() => markAllRead()} className="text-sm text-blue-600">
+                            Marcar todas lidas
                         </button>
                     </div>
-                    <div className="max-h-80 overflow-auto">
+                    <div className="max-h-64 overflow-auto">
                         {notifications.length === 0 && (
-                            <p className="p-3 text-sm text-gray-500">
-                                Sem notificações
-                            </p>
+                            <p className="p-3 text-sm text-gray-500">Sem notificações</p>
                         )}
                         {notifications.map(n => (
                             <div
@@ -53,7 +43,7 @@ export default function NotificationBell() {
                                 <div>
                                     {n.type === 'new-ticket' ? (
                                         <p className="text-sm">
-                                            <strong>Novo Chamado:</strong> {n.ticket.title}
+                                            <strong>Novo chamado:</strong> {n.ticket.title}
                                         </p>
                                     ) : (
                                         <p className="text-sm">

@@ -38,12 +38,11 @@ export function NotificationProvider({ children }) {
     const connect = () => {
         const url = buildStreamUrl();
         if (!url) {
-            console.warn('[SSE] nenhum token disponível, não conectando.');
+            console.warn('[SSE] token ausente, não conectando.');
             return;
         }
         console.log('[SSE] conectando em', url);
         if (esRef.current) esRef.current.close();
-
         const es = new EventSource(url);
         esRef.current = es;
 
@@ -78,7 +77,7 @@ export function NotificationProvider({ children }) {
             }
         });
 
-        es.onerror = (err) => {
+        es.onerror = () => {
             console.warn('[SSE] erro/desconectado. Reconectando em', retryRef.current, 'ms');
             es.close();
             setTimeout(() => {

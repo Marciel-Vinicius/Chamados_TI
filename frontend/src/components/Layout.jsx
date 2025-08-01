@@ -29,9 +29,15 @@ export default function Layout({ children }) {
                                 TI-Chamados
                             </Link>
                             <nav className="space-x-4">
-                                <Link to="/tickets" className="hover:underline">Meus Chamados</Link>
-                                <Link to="/tickets/new" className="hover:underline">Abrir Chamado</Link>
-                                <Link to="/admin" className="hover:underline">Painel TI</Link>
+                                <Link to="/tickets" className="hover:underline">
+                                    Meus Chamados
+                                </Link>
+                                <Link to="/tickets/new" className="hover:underline">
+                                    Abrir Chamado
+                                </Link>
+                                <Link to="/admin" className="hover:underline">
+                                    Painel TI
+                                </Link>
                             </nav>
                         </div>
                         <div className="flex items-center gap-4">

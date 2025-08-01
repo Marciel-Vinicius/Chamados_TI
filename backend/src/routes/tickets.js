@@ -1,19 +1,13 @@
 // backend/src/routes/tickets.js
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const EventEmitter = require('events');
 const { Ticket, Comment, Op, User } = require('../models');
 const auth = require('../middleware/auth');
 const role = require('../middleware/role');
-
-// ---------- validação de ambiente ----------
-if (!process.env.JWT_SECRET) {
-  console.error('⚠️ JWT_SECRET não está definido. Defina no .env sem aspas (ex: JWT_SECRET=seusegredo).');
-}
+const notificationEmitter = require('../sse'); // <-- usa o emissor compartilhado
 
 // ---------- uploads ----------
 const uploadDir = path.join(__dirname, '..', '..', 'uploads');
@@ -25,103 +19,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ---------- emitter global ----------
-const notificationEmitter = new EventEmitter();
-
-// ---------- utilitário de normalização de token ----------
-function cleanToken(raw) {
-  if (!raw || typeof raw !== 'string') return null;
-  let token = raw.trim();
-  if (token.startsWith('Bearer ')) token = token.slice(7);
-  if (token.startsWith('"') && token.endsWith('"')) token = token.slice(1, -1);
-  return token;
-}
-
-// ---------- SSE stream ----------
-router.get('/stream', async (req, res) => {
-  let rawToken = req.query.token || req.headers.authorization;
-  if (!rawToken) {
-    console.warn('[SSE] token ausente');
-    return res.status(401).end('Token ausente');
-  }
-
-  rawToken = cleanToken(rawToken);
-  if (!rawToken) {
-    console.warn('[SSE] token após limpeza inválido');
-    return res.status(401).end('Token inválido');
-  }
-
-  console.log('[SSE] tentativa de conexão com token prefixo:', rawToken.slice(0, 8), '...');
-
-  let payload;
-  try {
-    payload = jwt.verify(rawToken, process.env.JWT_SECRET);
-  } catch (err) {
-    console.warn('[SSE] falha na verificação do token:', err.message);
-    return res.status(401).end('Token inválido ou expirado');
-  }
-
-  const user = await User.findByPk(payload.id);
-  if (!user) {
-    console.warn('[SSE] usuário do token não encontrado:', payload);
-    return res.status(401).end('Usuário inválido');
-  }
-
-  // cabeçalhos SSE
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'Access-Control-Allow-Origin': '*' // caso front esteja em outra origem
-  });
-  res.flushHeaders?.();
-
-  // keep-alive para manter a conexão viva
-  const keepAlive = setInterval(() => {
-    res.write(':\n\n');
-  }, 25000);
-
-  // confirma conexão
-  res.write(`event: connected\ndata: ${JSON.stringify({ user: { id: user.id, role: user.role } })}\n\n`);
-
-  const handler = (payload) => {
-    try {
-      if (payload.type === 'new-ticket') {
-        if (user.role !== 'TI') return; // só TI recebe
-        res.write(`event: notify\ndata: ${JSON.stringify(payload)}\n\n`);
-      } else if (payload.type === 'new-comment') {
-        const { ticketOwnerId } = payload;
-        if (user.role === 'TI' || user.id === ticketOwnerId) {
-          res.write(`event: notify\ndata: ${JSON.stringify(payload)}\n\n`);
-        }
-      }
-    } catch (e) {
-      console.error('[SSE] erro no handler:', e);
-    }
-  };
-
-  notificationEmitter.on('notify', handler);
-
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    notificationEmitter.off('notify', handler);
-  });
-});
-
-// rota auxiliar para verificar token rapidamente
-router.get('/validate-token', (req, res) => {
-  const raw = req.query.token;
-  const token = cleanToken(raw);
-  if (!token) return res.status(400).json({ error: 'Token ausente ou mal formatado' });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return res.json({ valid: true, decoded });
-  } catch (err) {
-    return res.status(400).json({ valid: false, error: err.message });
-  }
-});
-
-// autenticação das demais rotas
+// autenticação para rotas abaixo
 router.use(auth);
 
 /**
@@ -145,6 +43,7 @@ router.post('/', upload.single('attachment'), async (req, res) => {
       include: [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }]
     });
 
+    // Emite evento de novo chamado (só TI deve processar na SSE)
     notificationEmitter.emit('notify', {
       type: 'new-ticket',
       ticket: {
@@ -153,13 +52,18 @@ router.post('/', upload.single('attachment'), async (req, res) => {
         category: ticket.category,
         priority: ticket.priority,
         status: ticket.status,
-        userId: ticket.userId
+        userId: ticket.userId,
+        creator: {
+          id: ticket.User?.id,
+          email: ticket.User?.email,
+          setor: ticket.User?.setor
+        }
       }
     });
 
     return res.status(201).json(ticket);
   } catch (err) {
-    console.error('[POST /tickets] erro criar chamado:', err);
+    console.error('[POST /tickets] erro ao criar chamado:', err);
     return res.status(400).json({ message: 'Erro ao criar chamado', error: err.message });
   }
 });
@@ -181,7 +85,7 @@ router.get('/', async (req, res) => {
     const tickets = await Ticket.findAll({ where, order: [['createdAt', 'DESC']] });
     return res.json(tickets);
   } catch (err) {
-    console.error('[GET /tickets] erro listar meus chamados:', err);
+    console.error('[GET /tickets] erro ao listar meus chamados:', err);
     return res.status(500).json({ message: 'Erro ao listar chamados', error: err.message });
   }
 });
@@ -203,7 +107,7 @@ router.get('/all', role(['TI']), async (req, res) => {
     const tickets = await Ticket.findAll({ where, order: [['createdAt', 'DESC']] });
     return res.json(tickets);
   } catch (err) {
-    console.error('[GET /tickets/all] erro listar chamados TI:', err);
+    console.error('[GET /tickets/all] erro ao listar chamados TI:', err);
     return res.status(500).json({ message: 'Erro ao listar chamados TI', error: err.message });
   }
 });
