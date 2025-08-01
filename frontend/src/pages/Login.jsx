@@ -5,56 +5,57 @@ import { useNavigate, Link } from 'react-router-dom';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
   const navigate = useNavigate();
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  async function handleSubmit(e) {
+  const handleSubmit = async e => {
     e.preventDefault();
     try {
-      const res = await axios.post('/auth/login', { email, password });
+      const res = await axios.post(`${API}/auth/login`, { email, password });
       const { token } = res.data;
       localStorage.setItem('token', token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      navigate('/');
+      navigate('/admin');
     } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao entrar.');
+      console.error(err);
+      setMsg(err.response?.data?.message || 'Erro no login');
     }
-  }
+  };
 
   return (
-    <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow">
-      <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
-      {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
-      <form onSubmit={handleSubmit}>
+    <div className="max-w-md mx-auto p-6">
+      <h2 className="text-xl font-semibold mb-4">Login</h2>
+      {msg && <div className="mb-3 text-red-600">{msg}</div>}
+      <form onSubmit={handleSubmit} className="flex flex-col">
         <input
           type="email"
-          placeholder="E-mail"
-          className="w-full border border-gray-300 p-2 rounded mb-4"
+          placeholder="seu@exemplo.com"
+          autoComplete="username"
           value={email}
           onChange={e => setEmail(e.target.value)}
+          className="w-full border px-3 py-2 rounded mb-4"
           required
         />
         <input
           type="password"
           placeholder="Senha"
-          className="w-full border border-gray-300 p-2 rounded mb-4"
+          autoComplete="current-password"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          className="w-full border px-3 py-2 rounded mb-4"
           required
         />
-        <button
-          type="submit"
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded mb-4"
-        >
+        <button className="bg-blue-600 text-white px-4 py-2 rounded" type="submit">
           Entrar
         </button>
       </form>
-      <div className="text-center">
-        <Link to="/forgot-password" className="text-blue-500 hover:underline">Esqueceu a senha?</Link>
+      <div className="mt-4 text-sm">
+        Não tem conta?{' '}
+        <Link to="/register" className="text-blue-600 underline">
+          Criar conta
+        </Link>
       </div>
-      <p className="text-center mt-4">
-        Ainda não tem conta? <Link to="/register" className="text-blue-500 hover:underline">Cadastre-se</Link>
-      </p>
     </div>
   );
 }

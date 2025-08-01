@@ -1,76 +1,62 @@
-// frontend/src/pages/Register.jsx
 import { useState } from 'react';
 import axios from 'axios';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function Register() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [setor, setSetor] = useState('');
-    const [message, setMessage] = useState('');
+    const [msg, setMsg] = useState('');
     const navigate = useNavigate();
+    const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-    async function handleSubmit(e) {
+    const handleSubmit = async e => {
         e.preventDefault();
-        setMessage('');
         try {
-            const res = await axios.post('/auth/register', { email, password, setor });
-            setMessage(res.data.message);
-            navigate('/verify-email', { state: { email } });
+            const res = await axios.post(`${API}/auth/register`, { email, password, setor });
+            setMsg(res.data.message || 'Verifique seu e-mail para validar.');
+            // opcional: redirecionar pra verify-email depois
         } catch (err) {
-            setMessage(err.response?.data?.message || 'Erro ao cadastrar.');
+            console.error(err);
+            setMsg(err.response?.data?.message || 'Erro no cadastro');
         }
-    }
+    };
 
     return (
-        <div className="max-w-md mx-auto mt-12 p-6 bg-white rounded-2xl shadow-lg">
-            <h2 className="text-2xl font-semibold mb-6 text-center">Crie sua conta</h2>
-            {message && <div className="mb-4 text-center text-red-500">{message}</div>}
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium mb-1">Setor</label>
-                    <input
-                        type="text"
-                        value={setor}
-                        onChange={e => setSetor(e.target.value)}
-                        placeholder="Ex: Financeiro, RH, Compras…"
-                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium mb-1">Email</label>
-                    <input
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="seu@exemplo.com"
-                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm font-medium mb-1">Senha</label>
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
-                    />
-                </div>
-                <button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
-                >
+        <div className="max-w-md mx-auto p-6">
+            <h2 className="text-xl font-semibold mb-4">Registrar</h2>
+            {msg && <div className="mb-3 text-red-600">{msg}</div>}
+            <form onSubmit={handleSubmit} className="flex flex-col">
+                <input
+                    type="email"
+                    placeholder="seu@exemplo.com"
+                    autoComplete="username"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    className="w-full border px-3 py-2 rounded mb-4"
+                    required
+                />
+                <input
+                    type="password"
+                    placeholder="Senha"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full border px-3 py-2 rounded mb-4"
+                    required
+                />
+                <input
+                    type="text"
+                    placeholder="Setor"
+                    value={setor}
+                    onChange={e => setSetor(e.target.value)}
+                    className="w-full border px-3 py-2 rounded mb-4"
+                    required
+                />
+                <button className="bg-green-600 text-white px-4 py-2 rounded" type="submit">
                     Cadastrar
                 </button>
             </form>
-            <p className="text-center mt-4 text-sm">
-                Já tem conta?{' '}
-                <Link to="/login" className="text-blue-600 hover:underline">
-                    Entrar
-                </Link>
-            </p>
         </div>
     );
 }

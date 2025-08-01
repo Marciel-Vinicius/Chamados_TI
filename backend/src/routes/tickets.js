@@ -4,10 +4,14 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { Ticket, Comment, Op, User } = require('../models');
+const models = require('../models');
+const { Ticket, Comment, Op, User } = models;
+const Reason = models.Reason;
+const Category = models.Category;
+const Priority = models.Priority;
 const auth = require('../middleware/auth');
 const role = require('../middleware/role');
-const notificationEmitter = require('../sse'); // <-- usa o emissor compartilhado
+const notificationEmitter = require('../sse');
 
 // ---------- uploads ----------
 const uploadDir = path.join(__dirname, '..', '..', 'uploads');
@@ -19,7 +23,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// autenticação para rotas abaixo
+// autenticação para todas abaixo
 router.use(auth);
 
 /**
@@ -27,23 +31,54 @@ router.use(auth);
  */
 router.post('/', upload.single('attachment'), async (req, res) => {
   try {
-    const { title, description, category, priority } = req.body;
-    const attachment = req.file ? `/uploads/${req.file.filename}` : null;
-
-    const ticket = await Ticket.create({
+    const {
       title,
       description,
       category,
       priority,
+      reasonId,
+      categoryId,
+      priorityId
+    } = req.body;
+    const attachment = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const payload = {
+      title,
+      description,
       attachment,
-      userId: req.user.id
-    });
+      userId: req.user.id,
+      category: category || 'Sem categoria',
+      priority: priority || 'Média'
+    };
 
-    await ticket.reload({
-      include: [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }]
-    });
+    if (reasonId) payload.reasonId = reasonId;
 
-    // Emite evento de novo chamado (só TI deve processar na SSE)
+    if (categoryId) {
+      payload.categoryId = categoryId;
+      if (Category) {
+        const cat = await Category.findByPk(categoryId);
+        if (cat) payload.category = cat.name;
+      }
+    }
+
+    if (priorityId) {
+      payload.priorityId = priorityId;
+      if (Priority) {
+        const pr = await Priority.findByPk(priorityId);
+        if (pr) payload.priority = pr.name;
+      }
+    }
+
+    const ticket = await Ticket.create(payload);
+
+    const include = [];
+    include.push({ model: User, attributes: ['id', 'email', 'setor', 'role'] });
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    await ticket.reload({ include });
+
     notificationEmitter.emit('notify', {
       type: 'new-ticket',
       ticket: {
@@ -57,7 +92,8 @@ router.post('/', upload.single('attachment'), async (req, res) => {
           id: ticket.User?.id,
           email: ticket.User?.email,
           setor: ticket.User?.setor
-        }
+        },
+        reason: ticket.Reason ? { id: ticket.Reason.id, name: ticket.Reason.name } : null
       }
     });
 
@@ -82,7 +118,17 @@ router.get('/', async (req, res) => {
       if (dateFrom) where.createdAt[Op.gte] = new Date(dateFrom);
       if (dateTo) where.createdAt[Op.lte] = new Date(dateTo);
     }
-    const tickets = await Ticket.findAll({ where, order: [['createdAt', 'DESC']] });
+
+    const include = [];
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    const tickets = await Ticket.findAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      include
+    });
     return res.json(tickets);
   } catch (err) {
     console.error('[GET /tickets] erro ao listar meus chamados:', err);
@@ -104,7 +150,17 @@ router.get('/all', role(['TI']), async (req, res) => {
       if (dateFrom) where.createdAt[Op.gte] = new Date(dateFrom);
       if (dateTo) where.createdAt[Op.lte] = new Date(dateTo);
     }
-    const tickets = await Ticket.findAll({ where, order: [['createdAt', 'DESC']] });
+
+    const include = [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }];
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    const tickets = await Ticket.findAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      include
+    });
     return res.json(tickets);
   } catch (err) {
     console.error('[GET /tickets/all] erro ao listar chamados TI:', err);
@@ -117,13 +173,22 @@ router.get('/all', role(['TI']), async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    const ticket = await Ticket.findByPk(req.params.id, {
-      include: { model: User, attributes: ['id', 'email', 'setor', 'role'] }
-    });
+    const include = [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }];
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    const ticket = await Ticket.findByPk(req.params.id, { include });
     if (!ticket) return res.status(404).json({ message: 'Chamado não encontrado.' });
     if (req.user.role === 'common' && ticket.userId !== req.user.id) {
       return res.status(403).json({ message: 'Sem permissão.' });
     }
+
+    if (req.user.role === 'TI' && !ticket.viewedByTI) {
+      ticket.viewedByTI = true;
+      await ticket.save();
+    }
+
     return res.json(ticket);
   } catch (err) {
     console.error('[GET /tickets/:id] erro detalhe:', err);
