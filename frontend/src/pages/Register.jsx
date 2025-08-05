@@ -17,32 +17,24 @@ export default function Register() {
     const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
     useEffect(() => {
-        async function loadSectors() {
-            setLoadingSectors(true);
+        async function fetchSectors() {
             try {
                 const res = await axios.get(`${API}/sectors`);
-                setSectors(Array.isArray(res.data) ? res.data : []);
-            } catch (err) {
-                console.error('Erro buscando setores:', err);
-                setMsg('Não foi possível carregar os setores. Tente novamente mais tarde.');
+                setSectors(res.data);
+            } catch (e) {
+                console.error('Erro ao carregar setores', e);
             } finally {
                 setLoadingSectors(false);
             }
         }
-        loadSectors();
+        fetchSectors();
     }, [API]);
-
-    const handleChange = e => {
-        const { name, value } = e.target;
-        setForm(prev => ({ ...prev, [name]: value }));
-        setErrors(prev => ({ ...prev, [name]: null }));
-    };
 
     const validate = () => {
         const e = {};
         if (!form.email.trim()) e.email = 'Email é obrigatório.';
         if (!form.password) e.password = 'Senha é obrigatória.';
-        if (!form.sectorId) e.sectorId = 'Selecione um setor.';
+        if (!form.sectorId) e.sectorId = 'Setor é obrigatório.';
         setErrors(e);
         return Object.keys(e).length === 0;
     };
@@ -59,8 +51,7 @@ export default function Register() {
                 sectorId: form.sectorId
             });
             setMsg('✅ Código enviado. Verifique seu e-mail para validar.');
-            // opcional: redirecionar para página de verificação
-            setTimeout(() => navigate('/verify-email'), 1200);
+            setTimeout(() => navigate('/verify-email', { state: { email: form.email } }), 1200);
         } catch (err) {
             console.error('Erro no registro:', err);
             if (err.response) {
@@ -84,46 +75,43 @@ export default function Register() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
+            <form onSubmit={handleSubmit}>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Email</label>
                     <input
                         type="email"
-                        name="email"
-                        placeholder="seu@exemplo.com"
                         value={form.email}
-                        onChange={handleChange}
-                        className="w-full border px-3 py-2 rounded"
-                        autoComplete="username"
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                        required
                     />
                     {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
                 </div>
 
-                <div>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Senha</label>
                     <input
                         type="password"
-                        name="password"
-                        placeholder="Senha"
                         value={form.password}
-                        onChange={handleChange}
-                        className="w-full border px-3 py-2 rounded"
+                        onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
                         required
-                        autoComplete="new-password"
                     />
                     {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password}</p>}
                 </div>
 
-                <div>
-                    <label className="block mb-1 font-medium">Setor</label>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Setor</label>
                     {loadingSectors ? (
-                        <div className="text-sm text-gray-500">Carregando setores...</div>
+                        <div>Carregando setores...</div>
                     ) : (
                         <select
-                            name="sectorId"
                             value={form.sectorId}
-                            onChange={handleChange}
-                            className="w-full border px-3 py-2 rounded"
+                            onChange={e => setForm(f => ({ ...f, sectorId: e.target.value }))}
+                            className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                            required
                         >
-                            <option value="">-- Selecione o setor --</option>
+                            <option value="">Selecione</option>
                             {sectors.map(s => (
                                 <option key={s.id} value={s.id}>
                                     {s.name}

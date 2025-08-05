@@ -26,43 +26,58 @@ export default function Login() {
         return;
       }
       localStorage.setItem('token', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       navigate('/'); // ajustar para rota principal
     } catch (err) {
       console.error('Login error', err);
       if (err.response) {
-        setMsg(err.response.data?.message || 'Erro ao fazer login.');
+        const serverMsg = err.response.data?.message || 'Erro ao fazer login.';
+        setMsg(serverMsg);
       } else {
         setMsg('Erro de rede.');
       }
     }
   };
 
+  const isUnverified = msg.toLowerCase().includes('verifique seu e-mail');
+
   return (
     <div className="max-w-md mx-auto mt-12 p-6 bg-white rounded shadow">
       <h2 className="text-xl font-semibold mb-4">Entrar</h2>
-      {msg && <div className="mb-3 p-2 bg-red-100 text-red-800 rounded">{msg}</div>}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
+      {msg && (
+        <div className="mb-3 p-2 rounded bg-red-100 text-red-800">
+          {msg}
+          {isUnverified && (
+            <div className="mt-1 text-sm">
+              Ainda não verificou o e-mail?{' '}
+              <button
+                onClick={() => navigate('/verify-email', { state: { email } })}
+                className="underline text-blue-600"
+              >
+                Verificar agora
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-1">Email</label>
           <input
             type="email"
-            name="email"
-            placeholder="seu@exemplo.com"
             value={email}
             onChange={e => setEmail(e.target.value)}
-            className="w-full border px-3 py-2 rounded"
+            className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
             required
             autoComplete="username"
           />
         </div>
-        <div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-1">Senha</label>
           <input
             type="password"
-            name="password"
-            placeholder="Senha"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            className="w-full border px-3 py-2 rounded"
+            className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
             required
             autoComplete="current-password"
           />

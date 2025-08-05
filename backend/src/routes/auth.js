@@ -11,20 +11,20 @@ if (!process.env.JWT_SECRET) {
   console.warn('⚠️ JWT_SECRET não está definido. O login pode falhar por isso.');
 }
 
-// 1) Registro com código por e-mail
+// helper para normalizar e-mail
+const normalizeEmail = email => (email || '').trim().toLowerCase();
+
+// 1) Registro com código por e-mail (reenvia se não verificado)
 router.post('/register', async (req, res) => {
   console.log('REGISTER BODY:', req.body);
-  const { email, password, sectorId } = req.body;
+  let { email, password, sectorId } = req.body;
+  email = normalizeEmail(email);
+
   if (!email || !password || !sectorId) {
     return res.status(400).json({ message: 'Email, senha e setor são obrigatórios.' });
   }
 
   try {
-    const exists = await User.findOne({ where: { email } });
-    if (exists) {
-      return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
-    }
-
     const sector = await Sector.findByPk(sectorId);
     if (!sector) {
       return res.status(400).json({ message: 'Setor inválido.' });
@@ -34,6 +34,33 @@ router.post('/register', async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = Date.now() + 3600000; // 1 hora
 
+    const existing = await User.findOne({ where: { email } });
+
+    if (existing) {
+      if (existing.emailVerified) {
+        // já cadastrado e verificado
+        return res.status(409).json({ message: 'Este e-mail já está cadastrado.' });
+      } else {
+        // reenvia código: atualiza dados do usuário existente
+        existing.password = hashed; // aplica nova senha
+        existing.setor = sector.name;
+        existing.sectorId = sector.id;
+        existing.verificationToken = code;
+        existing.verificationTokenExpires = expires;
+        await existing.save();
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Seu código de verificação (reenvio)',
+          html: `<p>Seu código de verificação é <b>${code}</b>. Expira em 1 hora.</p>`
+        });
+
+        return res.status(200).json({ message: 'Código de verificação reenviado por e-mail.' });
+      }
+    }
+
+    // criação normal
     await User.create({
       email,
       password: hashed,
@@ -59,7 +86,8 @@ router.post('/register', async (req, res) => {
 
 // 2) Verificação de código de registro
 router.post('/verify-email', async (req, res) => {
-  const { email, code } = req.body;
+  const { email: rawEmail, code } = req.body;
+  const email = normalizeEmail(rawEmail);
   if (!email || !code) {
     return res.status(400).json({ message: 'Email e código são obrigatórios.' });
   }
@@ -75,16 +103,28 @@ router.post('/verify-email', async (req, res) => {
     user.verificationToken = null;
     user.verificationTokenExpires = null;
     await user.save();
-    return res.json({ message: 'E-mail verificado com sucesso!' });
+
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET não definido. Não é possível gerar token.');
+      return res.status(500).json({ message: 'Erro de configuração no servidor.' });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+    return res.json({ token });
   } catch (err) {
     console.error('ERROR VERIFY EMAIL:', err);
-    return res.status(500).json({ message: 'Erro interno na verificação.' });
+    return res.status(500).json({ message: 'Erro interno ao verificar e-mail.' });
   }
 });
 
-// 3) Login (só usuários verificados)
+// 3) Login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  let { email: rawEmail, password } = req.body;
+  const email = normalizeEmail(rawEmail);
   if (!email || !password) {
     return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
   }
@@ -116,7 +156,8 @@ router.post('/login', async (req, res) => {
 
 // 4) Enviar código de recuperação de senha
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
+  const { email: rawEmail } = req.body;
+  const email = normalizeEmail(rawEmail);
   if (!email) return res.status(400).json({ message: 'Email é obrigatório.' });
   try {
     const user = await User.findOne({ where: { email } });
@@ -131,18 +172,18 @@ router.post('/forgot-password', async (req, res) => {
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Código para redefinição de senha',
-      html: `<p>Seu código para redefinir a senha é <b>${code}</b>. Expira em 1 hora.</p>`
+      html: `<p>Seu código de redefinição é <b>${code}</b>. Expira em 1 hora.</p>`
     });
-    return res.json({ message: 'Código de recuperação enviado ao seu e-mail.' });
+    return res.json({ message: 'Se existir, você receberá um e-mail.' });
   } catch (err) {
     console.error('ERROR FORGOT PASSWORD:', err);
-    return res.status(500).json({ message: 'Erro interno ao solicitar recuperação.' });
+    return res.status(500).json({ message: 'Erro interno ao requisitar redefinição.' });
   }
 });
 
-// 5) Redefinir senha com código
 router.post('/reset-password', async (req, res) => {
-  const { email, code, newPassword } = req.body;
+  const { email: rawEmail, code, newPassword } = req.body;
+  const email = normalizeEmail(rawEmail);
   if (!email || !code || !newPassword) {
     return res.status(400).json({ message: 'Email, código e nova senha são obrigatórios.' });
   }
