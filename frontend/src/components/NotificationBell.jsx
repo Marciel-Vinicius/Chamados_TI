@@ -2,74 +2,66 @@
 import { useState } from 'react';
 import { useNotifications } from '../contexts/NotificationContext';
 
+// um ícone de sino inline
+const BellIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002
+         6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67
+         6.165 6 8.388 6 11v3.159c0 .538-.214
+         1.055-.595 1.436L4 17h5m6 0v1a3 3 0
+         11-6 0v-1m6 0H9" />
+    </svg>
+);
+
 export default function NotificationBell() {
     const { notifications, markAllRead, markRead } = useNotifications();
-    const unread = notifications.filter(n => !n.read);
+    const unreadCount = notifications.filter(n => !n.read).length;
     const [open, setOpen] = useState(false);
 
     const toggle = () => {
         setOpen(o => !o);
-        markAllRead();
+        if (!open) markAllRead();
     };
 
     return (
         <div className="relative">
-            <button onClick={toggle} className="relative p-2">
-                <span className="text-2xl">🔔</span>
-                {unread.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
-                        {unread.length}
+            <button onClick={toggle} className="relative p-1 focus:outline-none">
+                <BellIcon />
+                {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1">
+                        {unreadCount}
                     </span>
                 )}
             </button>
+
             {open && (
-                <div className="absolute right-0 mt-2 w-80 bg-white border rounded shadow-lg z-50">
-                    <div className="flex justify-between items-center p-2 border-b">
-                        <span className="font-semibold">Notificações</span>
-                        <button onClick={() => markAllRead()} className="text-sm text-blue-600">
-                            Marcar todas lidas
-                        </button>
-                    </div>
-                    <div className="max-h-64 overflow-auto">
-                        {notifications.length === 0 && (
-                            <p className="p-3 text-sm text-gray-500">Sem notificações</p>
-                        )}
-                        {notifications.map(n => (
+                <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-lg z-50 overflow-auto max-h-96">
+                    {notifications.length === 0 ? (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                            Sem novas notificações
+                        </div>
+                    ) : (
+                        notifications.map(n => (
                             <div
                                 key={n.id}
-                                className={`p-3 border-b flex justify-between ${n.read ? 'bg-gray-100' : 'bg-white'
-                                    }`}
+                                className={`p-3 border-b last:border-none ${n.read ? 'bg-gray-50' : 'bg-white'}`}
                             >
-                                <div>
-                                    {n.type === 'new-ticket' ? (
-                                        <p className="text-sm">
-                                            <strong>Novo chamado:</strong> {n.ticket.title}
-                                        </p>
-                                    ) : (
-                                        <p className="text-sm">
-                                            <strong>Comentário:</strong> {n.comment.content}
-                                        </p>
-                                    )}
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        {n.type === 'new-ticket'
-                                            ? `Categoria: ${n.ticket.category}`
-                                            : `De: ${n.comment.User?.email || 'Desconhecido'}`}
-                                    </p>
-                                    <p className="text-xs text-gray-400">
-                                        {new Date(n.receivedAt).toLocaleTimeString('pt-BR')}
-                                    </p>
-                                </div>
+                                <p className="text-sm">{n.message}</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    {new Date(n.timestamp).toLocaleString()}
+                                </p>
                                 {!n.read && (
                                     <button
                                         onClick={() => markRead(n.id)}
-                                        className="text-xs text-blue-600 self-start"
+                                        className="mt-1 text-xs text-blue-600"
                                     >
-                                        Ler
+                                        Marcar como lida
                                     </button>
                                 )}
                             </div>
-                        ))}
-                    </div>
+                        ))
+                    )}
                 </div>
             )}
         </div>

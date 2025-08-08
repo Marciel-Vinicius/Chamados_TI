@@ -16,44 +16,34 @@ const sectorRoutes = require('./routes/sectors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const FRONTEND_URL = process.env.FRONTEND_URL || '*';
+const FRONTEND_URL = process.env.FRONTEND_URL || '';
 
-// body parser
+const extraOrigins = ['http://localhost:5173', 'http://localhost:5174'];
+const allowedOrigins = FRONTEND_URL === '*'
+  ? null
+  : Array.from(new Set([
+    ...FRONTEND_URL.split(',').map(o => o.trim()).filter(Boolean),
+    ...extraOrigins
+  ]));
+
+app.use(cors({
+  origin: allowedOrigins === null
+    ? true
+    : (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`Blocked by CORS: ${origin}`));
+    },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// simple request logging
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-// CORS
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (FRONTEND_URL === '*' || origin === FRONTEND_URL) return callback(null, true);
-      return callback(new Error('CORS não permitido'), false);
-    },
-    credentials: true
-  })
-);
-
-// serve attachments
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// public / open routes
 app.use('/auth', authRoutes);
-app.use('/sectors', sectorRoutes);
-app.use('/reasons', reasonRoutes);
-app.use('/categories', categoryRoutes);
-app.use('/priorities', priorityRoutes);
 
-// SSE: ticket stream
 app.get(
   '/tickets/stream',
-  // allow token in querystring as fallback
   (req, res, next) => {
     if (req.query.token && !req.headers.authorization) {
       req.headers.authorization = `Bearer ${req.query.token}`;
@@ -65,24 +55,19 @@ app.get(
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      Connection: 'keep-alive'
+      Connection: 'keep-alive',
     });
     res.flushHeaders?.();
     res.write(`event: connected\ndata: ${JSON.stringify({ msg: 'connected' })}\n\n`);
 
     const user = req.user;
-
     const handler = payload => {
       try {
         if (payload.type === 'new-ticket') {
           if (user.role !== 'TI') return;
           res.write(`event: notify\ndata: ${JSON.stringify(payload)}\n\n`);
-        }
-        else if (payload.type === 'new-comment') {
-          const { ticketOwnerId, comment } = payload;
-          if (user.role === 'TI') {
-            res.write(`event: notify\ndata: ${JSON.stringify(payload)}\n\n`);
-          } else if (user.id === ticketOwnerId && comment.userId !== user.id) {
+        } else if (payload.type === 'new-comment') {
+          if (user.role === 'TI' || user.id === payload.ticketOwnerId) {
             res.write(`event: notify\ndata: ${JSON.stringify(payload)}\n\n`);
           }
         }
@@ -92,11 +77,9 @@ app.get(
     };
 
     notificationEmitter.on('notify', handler);
-
-    // keep‐alive pings
     const keepAlive = setInterval(() => {
       res.write(`event: ping\ndata: {}\n\n`);
-    }, 20_000);
+    }, 20000);
 
     req.on('close', () => {
       clearInterval(keepAlive);
@@ -105,19 +88,18 @@ app.get(
   }
 );
 
-// protected ticket routes
 app.use('/tickets', ticketRoutes);
+app.use('/reasons', reasonRoutes);
+app.use('/categories', categoryRoutes);
+app.use('/priorities', priorityRoutes);
+app.use('/sectors', sectorRoutes);
 
-// healthcheck
-app.get('/', (req, res) => res.send('OK'));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// start server after syncing DB
 (async () => {
   try {
-    // automatically add/remove columns to match your models
     await sequelize.sync({ alter: true });
     console.log('✅ Banco sincronizado (com alter)');
-
     app.listen(PORT, () => {
       console.log(`🚀 Backend rodando em http://localhost:${PORT}`);
     });

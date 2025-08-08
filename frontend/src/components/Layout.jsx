@@ -1,5 +1,6 @@
 // frontend/src/components/Layout.jsx
 import { Link, NavLink, useNavigate } from 'react-router-dom';
+import NotificationBell from './NotificationBell';
 
 export default function Layout({ children }) {
     const navigate = useNavigate();
@@ -13,10 +14,12 @@ export default function Layout({ children }) {
         <div className="min-h-screen bg-gray-50">
             <header className="bg-white shadow">
                 <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+                    {/* Logo / Home link */}
                     <Link to="/tickets" className="text-2xl font-bold text-blue-600">
                         TI-Chamados
                     </Link>
 
+                    {/* Main navigation */}
                     <nav className="flex space-x-6 text-gray-700 font-medium">
                         <NavLink
                             to="/tickets"
@@ -52,16 +55,9 @@ export default function Layout({ children }) {
                         </NavLink>
                     </nav>
 
+                    {/* Notifications and Logout */}
                     <div className="flex items-center space-x-4">
-                        {/* Sino de notificações simples */}
-                        <button
-                            onClick={() => { }}
-                            className="p-2 rounded-full hover:bg-gray-200"
-                            aria-label="Notificações"
-                        >
-                            🔔
-                        </button>
-
+                        <NotificationBell />
                         <button
                             onClick={handleLogout}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
@@ -72,7 +68,9 @@ export default function Layout({ children }) {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">{children}</main>
+            <main className="max-w-7xl mx-auto px-4 py-8">
+                {children}
+            </main>
         </div>
     );
 }

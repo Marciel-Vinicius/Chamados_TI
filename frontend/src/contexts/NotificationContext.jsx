@@ -4,91 +4,66 @@ import { createContext, useContext, useEffect, useState, useRef } from 'react';
 const NotificationContext = createContext();
 export const useNotifications = () => useContext(NotificationContext);
 
-const getCleanToken = () => {
-    let token = localStorage.getItem('token') || '';
-    token = token.trim();
-    if (token.startsWith('Bearer ')) token = token.slice(7);
-    if (token.startsWith('"') && token.endsWith('"')) token = token.slice(1, -1);
-    return token;
-};
-
-const buildStreamUrl = () => {
-    const base = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const token = getCleanToken();
-    if (!token) return null;
-    return `${base}/tickets/stream?token=${encodeURIComponent(token)}`;
-};
-
 export function NotificationProvider({ children }) {
     const [notifications, setNotifications] = useState([]);
-    const esRef = useRef(null);
     const retryRef = useRef(1000);
 
-    useEffect(() => {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
-        connect();
-        return () => {
-            if (esRef.current) esRef.current.close();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    // Retorna o JWT puro
+    const getToken = () => {
+        const raw = localStorage.getItem('token') || '';
+        return raw.replace(/^Bearer\s+/i, '').replace(/^"|"$/g, '');
+    };
 
     const connect = () => {
-        const url = buildStreamUrl();
-        if (!url) {
-            console.warn('[SSE] token ausente, não conectando.');
+        const base = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+        const token = getToken();
+        if (!token) {
+            console.warn('[SSE] não conectado: token ausente');
             return;
         }
-        console.log('[SSE] conectando em', url);
-        if (esRef.current) esRef.current.close();
-        const es = new EventSource(url);
-        esRef.current = es;
 
-        es.addEventListener('connected', (e) => {
-            console.log('[SSE] conectado:', e.data);
+        const es = new EventSource(`${base}/tickets/stream?token=${token}`);
+        es.onopen = () => {
+            console.log('[SSE] conectado');
             retryRef.current = 1000;
-        });
+        };
 
-        es.addEventListener('notify', (e) => {
-            let data;
-            try {
-                data = JSON.parse(e.data);
-            } catch (err) {
-                console.error('[SSE] parse error:', err);
-                return;
-            }
-            const id = Date.now().toString(36) + Math.random().toString(36, 5);
-            const notification = { ...data, id, read: false, receivedAt: new Date() };
-            setNotifications(prev => [notification, ...prev]);
-
-            if ('Notification' in window && Notification.permission === 'granted') {
-                let title = '';
-                let body = '';
-                if (data.type === 'new-ticket') {
-                    title = 'Novo chamado';
-                    body = data.ticket.title;
-                } else if (data.type === 'new-comment') {
-                    title = 'Novo comentário';
-                    body = `${data.comment.User?.email || 'Alguém'}: ${data.comment.content}`;
-                }
-                new Notification(title, { body });
-            }
+        es.addEventListener('notify', e => {
+            const payload = JSON.parse(e.data);
+            setNotifications(prev => {
+                // Evita duplicados pelo mesmo payload.id
+                if (prev.some(n => n.id === payload.id)) return prev;
+                return [
+                    {
+                        id: payload.id,
+                        type: payload.type,
+                        message:
+                            payload.type === 'new-ticket'
+                                ? `Novo chamado: ${payload.title}`
+                                : `Comentário em chamado #${payload.ticketId}`,
+                        data: payload,
+                        read: false,
+                        timestamp: payload.createdAt,
+                    },
+                    ...prev,
+                ];
+            });
         });
 
         es.onerror = () => {
-            console.warn('[SSE] erro/desconectado. Reconectando em', retryRef.current, 'ms');
+            console.error('[SSE] erro, reconectando em', retryRef.current, 'ms');
             es.close();
-            setTimeout(() => {
-                retryRef.current = Math.min(retryRef.current * 2, 30000);
-                connect();
-            }, retryRef.current);
+            setTimeout(connect, retryRef.current);
+            retryRef.current = Math.min(retryRef.current * 2, 60000);
         };
     };
 
-    const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    const markRead = (id) => setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    useEffect(connect, []);
+
+    const markAllRead = () =>
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const markRead = id =>
+        setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
 
     return (
         <NotificationContext.Provider value={{ notifications, markAllRead, markRead }}>
