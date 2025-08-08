@@ -13,6 +13,7 @@ import TicketList from './pages/TicketList.jsx';
 import CreateTicket from './pages/CreateTicket.jsx';
 import TicketDetails from './pages/TicketDetails.jsx';
 import AdminTickets from './pages/AdminTickets.jsx';
+import TIConfig from './pages/TIConfig.jsx';
 
 export default function App() {
   return (
@@ -25,17 +26,26 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Tudo que está aqui precisa de token */}
+        {/* Rotas que precisam de token */}
         <Route
           path="/*"
           element={
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  {/* Chamados do usuário */}
                   <Route path="tickets" element={<TicketList />} />
                   <Route path="tickets/new" element={<CreateTicket />} />
                   <Route path="tickets/:id" element={<TicketDetails />} />
+
+                  {/* Painel TI (somente chamados) */}
                   <Route path="admin" element={<AdminTickets />} />
+
+                  {/* Configurações TI (cadastros de motivos, categorias, etc.) */}
+                  <Route path="config-ti" element={<TIConfig />} />
+
+                  {/* opcional: rota padrão dentro de "/*" */}
+                  <Route path="*" element={<TicketList />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>
