@@ -1,176 +1,175 @@
 // frontend/src/pages/AdminTickets.jsx
-import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
+import { useEffect, useRef, useState } from 'react';
 
 export default function AdminTickets() {
   const [tickets, setTickets] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
-  const prevCount = useRef(null);
-  const reconnectDelay = useRef(1000);
+  const [status, setStatus] = useState('');
+  const [prio, setPrio] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState('');
   const esRef = useRef(null);
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  const formatDateTime = dt => new Date(dt).toLocaleString('pt-BR');
-
-  async function fetchTickets(notify) {
+  const fetchAll = async () => {
+    setBusy(true); setErr('');
     try {
-      const { data: list } = await axios.get(`${API}/tickets/all`);
-      if (prevCount.current != null && notify && Notification.permission === 'granted' && list.length !== prevCount.current) {
-        new Notification('Atualização de chamados', { body: `Total agora: ${list.length}` });
-      }
-      prevCount.current = list.length;
-      setTickets(list);
-      if (selected) {
-        const { data: det } = await axios.get(`${API}/tickets/${selected.id}`);
-        setSelected(det);
-        const { data: comm } = await axios.get(`${API}/tickets/${selected.id}/comments`);
-        setComments(comm);
-      }
-    } catch (err) {
-      console.error(err);
+      const params = {};
+      if (status) params.status = status;
+      if (prio) params.priority = prio;
+      const { data } = await axios.get('/tickets/all', { params });
+      setTickets(data || []);
+    } catch (e) {
+      setErr(e?.response?.data?.message || 'Falha ao carregar TI.');
+    } finally {
+      setBusy(false);
     }
-  }
-
-  const setupSSE = () => {
-    Notification.requestPermission();
-    esRef.current?.close();
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const es = new EventSource(`${API}/tickets/stream?token=${token}`);
-    esRef.current = es;
-    es.addEventListener('notify', e => {
-      const p = JSON.parse(e.data);
-      if (Notification.permission === 'granted') {
-        if (p.type === 'new-ticket') new Notification('Novo chamado', { body: p.title });
-        if (p.type === 'new-comment') new Notification('Comentário novo', { body: p.content });
-      }
-      fetchTickets(true);
-    });
-    es.onerror = () => {
-      es.close();
-      setTimeout(setupSSE, reconnectDelay.current);
-      reconnectDelay.current = Math.min(reconnectDelay.current * 2, 60000);
-    };
   };
 
+  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchAll(); }, [status, prio]);
+
+  // SSE de tickets
   useEffect(() => {
-    fetchTickets(false);
-    setupSSE();
-    return () => esRef.current?.close();
+    const raw = localStorage.getItem('token') || '';
+    const token = raw.replace(/^"|"$/g, '');
+    if (!token) return;
+
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const url = `${base}/tickets/stream?token=${encodeURIComponent(token)}`;
+    try { esRef.current?.close(); } catch { }
+    const es = new EventSource(url);
+    esRef.current = es;
+
+    es.addEventListener('ticket', () => {
+      // chegou atualização de ticket => recarrega
+      fetchAll();
+    });
+
+    es.onerror = () => {
+      try { es.close(); } catch { }
+      // reconecta simples
+      setTimeout(() => {
+        const neo = new EventSource(url);
+        esRef.current = neo;
+        neo.addEventListener('ticket', () => fetchAll());
+      }, 2000);
+    };
+
+    return () => { try { es.close(); } catch { } };
   }, []);
 
-  const selectTicket = async t => {
-    setSelected(t);
-    const { data: comm } = await axios.get(`${API}/tickets/${t.id}/comments`);
-    setComments(comm);
+  const updateStatus = async (id, newStatus) => {
+    try {
+      await axios.put(`/tickets/${id}/status`, { status: newStatus });
+      await fetchAll();
+    } catch (e) {
+      alert('Falha ao atualizar status.');
+    }
   };
 
-  const addComment = async () => {
-    if (!newComment.trim()) return;
-    const { data } = await axios.post(`${API}/tickets/${selected.id}/comments`, { content: newComment.trim() });
-    setComments(prev => [...prev, data]);
-    setNewComment('');
-    if (Notification.permission === 'granted') {
-      new Notification('Comentário adicionado', { body: data.content });
+  const colorByStatus = (s) => {
+    switch (String(s || '').toLowerCase()) {
+      case 'open': return 'bg-blue-100 text-blue-700';
+      case 'in_progress': return 'bg-yellow-100 text-yellow-700';
+      case 'closed': return 'bg-green-100 text-green-700';
+      default: return 'bg-gray-100 text-gray-700';
     }
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      <div className="lg:w-1/3 space-y-3">
-        <h3 className="text-xl font-semibold">Lista de Chamados</h3>
-        {tickets.length ? tickets.map(t => (
-          <div
-            key={t.id}
-            onClick={() => selectTicket(t)}
-            className={`border rounded-lg p-3 cursor-pointer transition ${!t.viewedByTI ? 'bg-yellow-50' : 'bg-white'}`}
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-white text-xl font-semibold">Admin TI — Chamados</h1>
+          <p className="text-white/70 text-sm">Gerencie os tickets abertos pelos usuários.</p>
+        </div>
+        <div className="flex gap-2">
+          <select
+            className="rounded-xl border-gray-300 text-sm"
+            value={status} onChange={(e) => setStatus(e.target.value)}
           >
-            <div className="font-medium truncate">{t.title}</div>
-            <div className="text-sm text-gray-500 truncate">
-              {t.Category?.name || t.category} • {t.Priority?.name || t.priority}
-            </div>
-            <div className="text-xs text-gray-400">{formatDateTime(t.createdAt)}</div>
-            {!t.viewedByTI && <span className="ml-2 bg-yellow-200 text-yellow-800 px-2 py-1 rounded text-xs">Novo</span>}
-          </div>
-        )) : (
-          <p className="text-gray-600">Nenhum chamado encontrado.</p>
-        )}
+            <option value="">Status (todos)</option>
+            <option value="open">Aberto</option>
+            <option value="in_progress">Em andamento</option>
+            <option value="closed">Fechado</option>
+          </select>
+          <select
+            className="rounded-xl border-gray-300 text-sm"
+            value={prio} onChange={(e) => setPrio(e.target.value)}
+          >
+            <option value="">Prioridade (todas)</option>
+            <option value="Baixa">Baixa</option>
+            <option value="Média">Média</option>
+            <option value="Alta">Alta</option>
+          </select>
+        </div>
       </div>
 
-      {selected && (
-        <div className="flex-1 bg-white shadow rounded-lg p-6">
-          <h3 className="text-2xl font-semibold mb-4">{selected.title}</h3>
+      <div className="bg-white rounded-2xl shadow overflow-hidden">
+        {busy && <div className="p-6 text-gray-600 text-sm">Carregando...</div>}
+        {err && <div className="p-6 text-red-600 text-sm">{err}</div>}
+        {!busy && !err && tickets.length === 0 && (
+          <div className="p-6 text-gray-600 text-sm">Nenhum chamado encontrado.</div>
+        )}
 
-          <div className="mb-4">
-            <label className="font-medium mr-2">Status:</label>
-            <select
-              value={selected.status}
-              onChange={async e => {
-                const { data } = await axios.put(`${API}/tickets/${selected.id}/status`, { status: e.target.value });
-                setSelected(data);
-                fetchTickets(false);
-              }}
-              className="border border-gray-300 rounded px-2 py-1"
-            >
-              <option value="Pendente">Pendente</option>
-              <option value="Em andamento">Em andamento</option>
-              <option value="Fechado">Fechado</option>
-            </select>
-          </div>
-
-          <div className="flex flex-wrap gap-4 mb-4 text-sm text-gray-600">
-            <span>{selected.Category?.name || selected.category} • {selected.Priority?.name || selected.priority}</span>
-            {selected.Reason && <span>Motivo: {selected.Reason.name}</span>}
-            <span>Aberto em: {formatDateTime(selected.createdAt)}</span>
-            <span>Criador: {selected.User?.email || '—'}</span>
-          </div>
-
-          <p className="mb-6 whitespace-pre-wrap">{selected.description}</p>
-
-          {selected.attachment && (
-            <div className="mb-6">
-              <a
-                href={`${API}${selected.attachment}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 underline"
-              >
-                Ver anexo
-              </a>
-            </div>
-          )}
-
-          <div className="space-y-4 mb-6">
-            {comments.map(c => (
-              <div key={c.id} className="border-t pt-3 text-gray-700">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>{c.User?.email}</span>
-                  <span>{formatDateTime(c.createdAt)}</span>
-                </div>
-                <p>{c.content}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="flex-1 border border-gray-300 rounded px-3 py-2 focus:outline-none"
-              placeholder="Adicionar comentário"
-              value={newComment}
-              onChange={e => setNewComment(e.target.value)}
-            />
-            <button
-              onClick={addComment}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-            >
-              Enviar
-            </button>
-          </div>
-        </div>
-      )}
+        {!busy && !err && tickets.length > 0 && (
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">#</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Título</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Usuário</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Categoria</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Prioridade</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">Criado em</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {tickets.map((t) => (
+                <tr key={t.id} className="border-t">
+                  <td className="px-4 py-3">{t.id}</td>
+                  <td className="px-4 py-3">{t.title || '-'}</td>
+                  <td className="px-4 py-3">{t?.User?.email || '-'}</td>
+                  <td className="px-4 py-3">{t.category || t?.Category?.name || '-'}</td>
+                  <td className="px-4 py-3">{t.priority || t?.Priority?.name || '-'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs ${colorByStatus(t.status)}`}>
+                      {t.status || '-'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {t.createdAt ? new Date(t.createdAt).toLocaleString() : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="inline-flex gap-2">
+                      {t.status !== 'open' && (
+                        <button
+                          className="text-xs rounded-lg px-3 py-1 bg-blue-600 text-white"
+                          onClick={() => updateStatus(t.id, 'open')}
+                        >Reabrir</button>
+                      )}
+                      {t.status !== 'in_progress' && (
+                        <button
+                          className="text-xs rounded-lg px-3 py-1 bg-yellow-500 text-white"
+                          onClick={() => updateStatus(t.id, 'in_progress')}
+                        >Em andamento</button>
+                      )}
+                      {t.status !== 'closed' && (
+                        <button
+                          className="text-xs rounded-lg px-3 py-1 bg-green-600 text-white"
+                          onClick={() => updateStatus(t.id, 'closed')}
+                        >Fechar</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

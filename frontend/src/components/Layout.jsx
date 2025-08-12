@@ -1,75 +1,102 @@
 // frontend/src/components/Layout.jsx
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import NotificationBell from './NotificationBell';
+import { useEffect, useState } from 'react';
 
-export default function Layout({ children }) {
-    const navigate = useNavigate();
+const NavLink = ({ to, label }) => {
+    const { pathname } = useLocation();
+    const active = pathname === to;
+    return (
+        <Link
+            to={to}
+            className={`px-3 py-1.5 rounded-xl text-sm transition ${active ? 'bg-white/20 text-white' : 'text-white/80 hover:text-white hover:bg-white/10'
+                }`}
+        >
+            {label}
+        </Link>
+    );
+};
 
-    const handleLogout = () => {
+function UserMenu() {
+    const nav = useNavigate();
+    const [open, setOpen] = useState(false);
+    const [email, setEmail] = useState('');
+    const [role, setRole] = useState('');
+
+    useEffect(() => {
+        try {
+            const u = JSON.parse(localStorage.getItem('user') || '{}');
+            setEmail(u?.email || '');
+            setRole(u?.role || '');
+        } catch (_) { }
+    }, []);
+
+    const logout = () => {
         localStorage.removeItem('token');
-        navigate('/login', { replace: true });
+        localStorage.removeItem('user');
+        setOpen(false);
+        nav('/login', { replace: true });
+        // garante encerrar SSE e estados
+        setTimeout(() => window.location.reload(), 50);
     };
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <header className="bg-white shadow">
-                <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-                    {/* Logo / Home link */}
-                    <Link to="/tickets" className="text-2xl font-bold text-blue-600">
-                        TI-Chamados
+        <div className="relative">
+            <button
+                onClick={() => setOpen(v => !v)}
+                className="text-sm text-white/90 hover:text-white px-3 py-1.5 rounded-xl hover:bg-white/10 transition"
+            >
+                {email || 'Conta'}{role ? ` (${role})` : ''}
+            </button>
+            {open && (
+                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
+                    <div className="px-4 py-3 border-b">
+                        <p className="text-sm font-semibold text-gray-800">Conta</p>
+                        <p className="text-xs text-gray-500 truncate">{email || '—'}</p>
+                        <p className="text-xs text-gray-500">{role || '—'}</p>
+                    </div>
+                    <button
+                        onClick={logout}
+                        className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50"
+                    >
+                        Sair
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function Layout() {
+    return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+            <header className="sticky top-0 z-20 backdrop-blur bg-slate-900/60 border-b border-white/10">
+                <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-4">
+                    <Link to="/" className="flex items-center gap-2">
+                        <div className="h-9 w-9 rounded-2xl bg-white/10 flex items-center justify-center">
+                            <span className="text-white font-bold">TI</span>
+                        </div>
+                        <span className="text-white font-semibold">Chamados</span>
                     </Link>
 
-                    {/* Main navigation */}
-                    <nav className="flex space-x-6 text-gray-700 font-medium">
-                        <NavLink
-                            to="/tickets"
-                            className={({ isActive }) =>
-                                isActive ? 'text-blue-600' : 'hover:text-blue-600'
-                            }
-                        >
-                            Meus Chamados
-                        </NavLink>
-                        <NavLink
-                            to="/tickets/new"
-                            className={({ isActive }) =>
-                                isActive ? 'text-blue-600' : 'hover:text-blue-600'
-                            }
-                        >
-                            Abrir Chamado
-                        </NavLink>
-                        <NavLink
-                            to="/admin"
-                            className={({ isActive }) =>
-                                isActive ? 'text-blue-600' : 'hover:text-blue-600'
-                            }
-                        >
-                            Painel TI
-                        </NavLink>
-                        <NavLink
-                            to="/config-ti"
-                            className={({ isActive }) =>
-                                isActive ? 'text-blue-600' : 'hover:text-blue-600'
-                            }
-                        >
-                            Configurações TI
-                        </NavLink>
+                    <nav className="ml-6 hidden md:flex items-center gap-2">
+                        <NavLink to="/tickets" label="Meus chamados" />
+                        <NavLink to="/new" label="Abrir chamado" />
+                        <NavLink to="/admin" label="Admin TI" />
+                        <NavLink to="/config" label="Configurações" />
                     </nav>
 
-                    {/* Notifications and Logout */}
-                    <div className="flex items-center space-x-4">
+                    <div className="ml-auto flex items-center gap-3">
                         <NotificationBell />
-                        <button
-                            onClick={handleLogout}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                        >
-                            Logout
-                        </button>
+                        <UserMenu />
                     </div>
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-4 py-8">
-                {children}
+            <main className="mx-auto max-w-6xl px-4 py-6">
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 shadow-xl">
+                    <Outlet />
+                </div>
             </main>
         </div>
     );

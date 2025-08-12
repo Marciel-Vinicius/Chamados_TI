@@ -1,5 +1,5 @@
 // backend/src/sse.js
-const EventEmitter = require('events');
+const { EventEmitter } = require('events');
 const notificationEmitter = new EventEmitter();
-module.exports = notificationEmitter;
-
+notificationEmitter.setMaxListeners(1000); // muitas conexões SSE ok
+module.exports = { notificationEmitter };

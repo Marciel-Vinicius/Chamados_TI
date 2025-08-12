@@ -1,57 +1,84 @@
 // frontend/src/App.jsx
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
+// Páginas (ajuste os imports conforme seus arquivos)
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import VerifyEmail from './pages/VerifyEmail.jsx';
-import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
-
-import TicketList from './pages/TicketList.jsx';
-import CreateTicket from './pages/CreateTicket.jsx';
-import TicketDetails from './pages/TicketDetails.jsx';
+import MyTickets from './pages/TicketList.jsx';      // ou MyTickets.jsx se for esse o nome
+import NewTicket from './pages/NewTicket.jsx';        // se você usa CreateTicket.jsx, troque aqui
 import AdminTickets from './pages/AdminTickets.jsx';
 import TIConfig from './pages/TIConfig.jsx';
+import TicketDetails from './pages/TicketDetails.jsx';
+
+function NotFound() {
+  return (
+    <div className="text-center py-16">
+      <h1 className="text-2xl font-semibold mb-2">Página não encontrada</h1>
+      <p className="text-gray-600">Verifique o endereço e tente novamente.</p>
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Páginas públicas */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+    <Routes>
+      {/* Rotas públicas */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/verify" element={<VerifyEmail />} />
+      <Route path="/reset" element={<ResetPassword />} />
 
-        {/* Rotas que precisam de token */}
+      {/* Rotas protegidas (dentro do layout) */}
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/tickets" replace />} />
         <Route
-          path="/*"
+          path="/tickets"
           element={
             <ProtectedRoute>
-              <Layout>
-                <Routes>
-                  {/* Chamados do usuário */}
-                  <Route path="tickets" element={<TicketList />} />
-                  <Route path="tickets/new" element={<CreateTicket />} />
-                  <Route path="tickets/:id" element={<TicketDetails />} />
-
-                  {/* Painel TI (somente chamados) */}
-                  <Route path="admin" element={<AdminTickets />} />
-
-                  {/* Configurações TI (cadastros de motivos, categorias, etc.) */}
-                  <Route path="config-ti" element={<TIConfig />} />
-
-                  {/* opcional: rota padrão dentro de "/*" */}
-                  <Route path="*" element={<TicketList />} />
-                </Routes>
-              </Layout>
+              <MyTickets />
             </ProtectedRoute>
           }
         />
-      </Routes>
-    </BrowserRouter>
+        <Route
+          path="/new"
+          element={
+            <ProtectedRoute>
+              <NewTicket />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ticket/:id"
+          element={
+            <ProtectedRoute>
+              <TicketDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute roles={['TI']}>
+              <AdminTickets />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/config"
+          element={
+            <ProtectedRoute roles={['TI']}>
+              <TIConfig />
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+
+      {/* 404 */}
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   );
 }

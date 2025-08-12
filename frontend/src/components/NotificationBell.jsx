@@ -1,67 +1,72 @@
 // frontend/src/components/NotificationBell.jsx
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNotifications } from '../contexts/NotificationContext';
 
-// um ícone de sino inline
-const BellIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002
-         6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67
-         6.165 6 8.388 6 11v3.159c0 .538-.214
-         1.055-.595 1.436L4 17h5m6 0v1a3 3 0
-         11-6 0v-1m6 0H9" />
-    </svg>
-);
-
 export default function NotificationBell() {
-    const { notifications, markAllRead, markRead } = useNotifications();
-    const unreadCount = notifications.filter(n => !n.read).length;
+    const { notifications, count, markAllAsRead } = useNotifications();
     const [open, setOpen] = useState(false);
+    const ref = useRef(null);
 
-    const toggle = () => {
-        setOpen(o => !o);
-        if (!open) markAllRead();
-    };
+    useEffect(() => {
+        const onClick = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('click', onClick);
+        return () => document.removeEventListener('click', onClick);
+    }, []);
 
     return (
-        <div className="relative">
-            <button onClick={toggle} className="relative p-1 focus:outline-none">
-                <BellIcon />
-                {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1">
-                        {unreadCount}
+        <div className="relative" ref={ref}>
+            <button
+                onClick={() => setOpen(v => !v)}
+                className="relative inline-flex items-center justify-center rounded-full p-2 hover:bg-white/10 transition"
+                title="Notificações"
+            >
+                {/* ícone simples em SVG */}
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 stroke-white" fill="none" viewBox="0 0 24 24">
+                    <path strokeWidth="1.5" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 21 10.5V10a9 9 0 1 0-18 0v.5a8.967 8.967 0 0 1 .69 5.272 23.85 23.85 0 0 0 5.454 1.31m5.713 0a24.255 24.255 0 0 1-11.426 0m11.426 0a3 3 0 1 1-5.713 0" />
+                </svg>
+                {count > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                        {count}
                     </span>
                 )}
             </button>
 
             {open && (
-                <div className="absolute right-0 mt-2 w-80 bg-white shadow-lg rounded-lg z-50 overflow-auto max-h-96">
-                    {notifications.length === 0 ? (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                            Sem novas notificações
-                        </div>
-                    ) : (
-                        notifications.map(n => (
-                            <div
-                                key={n.id}
-                                className={`p-3 border-b last:border-none ${n.read ? 'bg-gray-50' : 'bg-white'}`}
-                            >
-                                <p className="text-sm">{n.message}</p>
-                                <p className="text-xs text-gray-400 mt-1">
-                                    {new Date(n.timestamp).toLocaleString()}
-                                </p>
-                                {!n.read && (
-                                    <button
-                                        onClick={() => markRead(n.id)}
-                                        className="mt-1 text-xs text-blue-600"
-                                    >
-                                        Marcar como lida
-                                    </button>
-                                )}
-                            </div>
-                        ))
-                    )}
+                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] rounded-2xl bg-white shadow-xl ring-1 ring-black/5 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b">
+                        <h4 className="font-semibold text-gray-800">Notificações</h4>
+                        <button
+                            onClick={() => { markAllAsRead(); setOpen(false); }}
+                            className="text-sm text-blue-600 hover:underline"
+                        >
+                            Limpar tudo
+                        </button>
+                    </div>
+                    <ul className="max-h-80 overflow-auto divide-y">
+                        {notifications.length === 0 && (
+                            <li className="px-4 py-6 text-sm text-gray-500">Sem novas notificações</li>
+                        )}
+                        {notifications.map((n) => (
+                            <li key={n.id} className="px-4 py-3 hover:bg-gray-50">
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-1 h-2.5 w-2.5 rounded-full bg-blue-500" />
+                                    <div className="flex-1">
+                                        <p className="text-sm text-gray-900 font-medium">
+                                            {n.title || n.type || 'Atualização'}
+                                        </p>
+                                        {n.message && (
+                                            <p className="text-sm text-gray-600">{n.message}</p>
+                                        )}
+                                        <p className="text-[11px] text-gray-400 mt-1">
+                                            {new Date(n.ts || Date.now()).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
         </div>

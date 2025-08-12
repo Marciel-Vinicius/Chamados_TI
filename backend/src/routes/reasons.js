@@ -1,72 +1,48 @@
 // backend/src/routes/reasons.js
 const express = require('express');
 const router = express.Router();
+const { Reason } = require('../models');
 const auth = require('../middleware/auth');
 const role = require('../middleware/role');
-const { Reason } = require('../models');
 
 router.use(auth);
 
-/**
- * Listar motivos
- */
-router.get('/', async (req, res) => {
-    try {
-        const reasons = await Reason.findAll({ order: [['name', 'ASC']] });
-        return res.json(reasons);
-    } catch (err) {
-        console.error('[GET /reasons] erro:', err);
-        return res.status(500).json({ message: 'Erro ao listar motivos', error: err.message });
-    }
+router.get('/', async (_req, res) => {
+    const rows = await Reason.findAll({ order: [['name', 'ASC']] });
+    res.json(rows);
 });
 
-/**
- * Criar motivo (TI)
- */
 router.post('/', role(['TI']), async (req, res) => {
-    try {
-        const { name } = req.body;
-        if (!name || !name.trim()) return res.status(400).json({ message: 'Nome do motivo é obrigatório.' });
-        const existing = await Reason.findOne({ where: { name: name.trim() } });
-        if (existing) return res.status(409).json({ message: 'Motivo já existe.' });
-        const reason = await Reason.create({ name: name.trim() });
-        return res.status(201).json(reason);
-    } catch (err) {
-        console.error('[POST /reasons] erro:', err);
-        return res.status(500).json({ message: 'Erro ao criar motivo', error: err.message });
-    }
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'Nome é obrigatório.' });
+    const exists = await Reason.findOne({ where: { name } });
+    if (exists) return res.status(409).json({ message: 'Já existe um motivo com esse nome.' });
+    const row = await Reason.create({ name });
+    res.status(201).json(row);
 });
 
-/**
- * Atualizar motivo (TI)
- */
 router.put('/:id', role(['TI']), async (req, res) => {
-    try {
-        const { name } = req.body;
-        const reason = await Reason.findByPk(req.params.id);
-        if (!reason) return res.status(404).json({ message: 'Motivo não encontrado.' });
-        if (!name || !name.trim()) return res.status(400).json({ message: 'Nome do motivo é obrigatório.' });
-        reason.name = name.trim();
-        await reason.save();
-        return res.json(reason);
-    } catch (err) {
-        console.error('[PUT /reasons/:id] erro:', err);
-        return res.status(500).json({ message: 'Erro ao atualizar motivo', error: err.message });
+    const row = await Reason.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ message: 'Não encontrado.' });
+    const name = String(req.body?.name || '').trim();
+    if (!name) return res.status(400).json({ message: 'Nome é obrigatório.' });
+    const exists = await Reason.findOne({ where: { name } });
+    if (exists && exists.id !== row.id) {
+        return res.status(409).json({ message: 'Já existe outro motivo com esse nome.' });
     }
+    row.name = name;
+    await row.save();
+    res.json(row);
 });
 
-/**
- * Deletar motivo (TI)
- */
 router.delete('/:id', role(['TI']), async (req, res) => {
+    const row = await Reason.findByPk(req.params.id);
+    if (!row) return res.status(404).json({ message: 'Não encontrado.' });
     try {
-        const reason = await Reason.findByPk(req.params.id);
-        if (!reason) return res.status(404).json({ message: 'Motivo não encontrado.' });
-        await reason.destroy();
-        return res.json({ message: 'Motivo removido.' });
-    } catch (err) {
-        console.error('[DELETE /reasons/:id] erro:', err);
-        return res.status(500).json({ message: 'Erro ao deletar motivo', error: err.message });
+        await row.destroy();
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(400).json({ message: 'Não foi possível excluir. Verifique vínculos com tickets.' });
     }
 });
 
