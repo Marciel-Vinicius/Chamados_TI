@@ -1,76 +1,52 @@
 // frontend/src/pages/VerifyEmail.jsx
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useNavigate, Link } from 'react-router-dom';
 
 export default function VerifyEmail() {
-    const nav = useNavigate();
-    const [email, setEmail] = useState('');
+    const location = useLocation();
+    const navigate = useNavigate();
     const [code, setCode] = useState('');
-    const [busy, setBusy] = useState(false);
-    const [msg, setMsg] = useState('');
-    const [err, setErr] = useState('');
+    const [message, setMessage] = useState('');
+    const email = location.state?.email || '';
 
-    const handleVerify = async (e) => {
+    async function handleSubmit(e) {
         e.preventDefault();
-        setErr(''); setMsg('');
-        setBusy(true);
+        setMessage('');
         try {
-            const { data } = await axios.post('/auth/verify-email', { email, code });
-            setMsg(data?.message || 'E-mail verificado!');
-            setTimeout(() => nav('/login'), 1200);
-        } catch (error) {
-            console.error(error);
-            setErr(error?.response?.data?.message || 'Falha ao verificar.');
-        } finally {
-            setBusy(false);
+            await axios.post('/auth/verify-email', { email, code });
+            setMessage('E‑mail verificado! Redirecionando...');
+            setTimeout(() => navigate('/login'), 2000);
+        } catch (err) {
+            setMessage(err.response?.data?.message || 'Erro na verificação.');
         }
-    };
+    }
 
     return (
-        <div className="max-w-md mx-auto">
-            <h1 className="text-white text-2xl font-semibold mb-4">Verificar e-mail</h1>
-            <div className="bg-white rounded-2xl shadow p-6">
-                <form onSubmit={handleVerify} className="space-y-4">
-                    {err && <div className="p-3 rounded-lg text-sm bg-red-50 text-red-700">{err}</div>}
-                    {msg && <div className="p-3 rounded-lg text-sm bg-green-50 text-green-700">{msg}</div>}
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">E-mail</label>
-                        <input
-                            type="email"
-                            className="mt-1 w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="voce@empresa.com"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Código</label>
-                        <input
-                            type="text"
-                            className="mt-1 w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            placeholder="Código recebido por e-mail"
-                            required
-                        />
-                    </div>
-
-                    <button
-                        disabled={busy}
-                        className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2 font-medium transition"
-                    >
-                        {busy ? 'Verificando...' : 'Verificar'}
-                    </button>
-                </form>
-
-                <div className="mt-4 text-sm text-gray-600">
-                    <Link className="hover:underline" to="/login">Voltar ao login</Link>
+        <div className="max-w-md mx-auto mt-12 p-6 bg-white rounded-2xl shadow-lg">
+            <h2 className="text-2xl font-semibold mb-6 text-center">Verificar E‑mail</h2>
+            <p className="mb-4 text-center text-sm text-gray-600">
+                Código enviado para <span className="font-medium">{email}</span>
+            </p>
+            {message && <div className="mb-4 text-center text-red-500">{message}</div>}
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium mb-1">Código de Verificação</label>
+                    <input
+                        type="text"
+                        value={code}
+                        onChange={e => setCode(e.target.value)}
+                        placeholder="000000"
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                    />
                 </div>
-            </div>
+                <button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg"
+                >
+                    Verificar
+                </button>
+            </form>
         </div>
     );
 }

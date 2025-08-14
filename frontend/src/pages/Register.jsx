@@ -1,89 +1,134 @@
 // frontend/src/pages/Register.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function Register() {
-    const nav = useNavigate();
-    const [name, setName] = useState(''); // nome do usuário
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [busy, setBusy] = useState(false);
+    const [form, setForm] = useState({
+        email: '',
+        password: '',
+        sectorId: ''
+    });
+    const [sectors, setSectors] = useState([]);
     const [msg, setMsg] = useState('');
-    const [err, setErr] = useState('');
+    const [loadingSectors, setLoadingSectors] = useState(true);
+    const [errors, setErrors] = useState({});
+    const navigate = useNavigate();
+    const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-    const handleSubmit = async (e) => {
+    useEffect(() => {
+        async function fetchSectors() {
+            try {
+                const res = await axios.get(`${API}/sectors`);
+                setSectors(res.data);
+            } catch (e) {
+                console.error('Erro ao carregar setores', e);
+            } finally {
+                setLoadingSectors(false);
+            }
+        }
+        fetchSectors();
+    }, [API]);
+
+    const validate = () => {
+        const e = {};
+        if (!form.email.trim()) e.email = 'Email é obrigatório.';
+        if (!form.password) e.password = 'Senha é obrigatória.';
+        if (!form.sectorId) e.sectorId = 'Setor é obrigatório.';
+        setErrors(e);
+        return Object.keys(e).length === 0;
+    };
+
+    const handleSubmit = async e => {
         e.preventDefault();
-        setErr(''); setMsg('');
-        setBusy(true);
+        setMsg('');
+        if (!validate()) return;
+
         try {
-            const { data } = await axios.post('/auth/register', { name, email, password });
-            setMsg(data?.message || 'Conta criada! Verifique seu e-mail (se aplicável).');
-            setTimeout(() => nav('/login'), 1200);
-        } catch (error) {
-            console.error('Register error', error);
-            setErr(error?.response?.data?.message || 'Falha ao registrar.');
-        } finally {
-            setBusy(false);
+            await axios.post(`${API}/auth/register`, {
+                email: form.email,
+                password: form.password,
+                sectorId: form.sectorId
+            });
+            setMsg('✅ Código enviado. Verifique seu e-mail para validar.');
+            setTimeout(() => navigate('/verify-email', { state: { email: form.email } }), 1200);
+        } catch (err) {
+            console.error('Erro no registro:', err);
+            if (err.response) {
+                setMsg(err.response.data?.message || 'Erro ao registrar.');
+            } else {
+                setMsg('Erro de rede ao tentar registrar.');
+            }
         }
     };
 
     return (
-        <div className="max-w-md mx-auto">
-            <h1 className="text-white text-2xl font-semibold mb-4">Criar conta</h1>
-            <div className="bg-white rounded-2xl shadow p-6">
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {err && <div className="p-3 rounded-lg text-sm bg-red-50 text-red-700">{err}</div>}
-                    {msg && <div className="p-3 rounded-lg text-sm bg-green-50 text-green-700">{msg}</div>}
+        <div className="max-w-md mx-auto mt-12 p-6 bg-white rounded shadow">
+            <h2 className="text-xl font-semibold mb-4">Registrar</h2>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Nome</label>
-                        <input
-                            type="text"
-                            className="mt-1 w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Seu nome"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">E-mail</label>
-                        <input
-                            type="email"
-                            className="mt-1 w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="voce@empresa.com"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Senha</label>
-                        <input
-                            type="password"
-                            className="mt-1 w-full rounded-xl border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Mínimo 6 caracteres"
-                            required
-                        />
-                    </div>
-
-                    <button
-                        disabled={busy}
-                        className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2 font-medium transition"
-                    >
-                        {busy ? 'Enviando...' : 'Criar conta'}
-                    </button>
-                </form>
-
-                <div className="mt-4 text-sm text-gray-600">
-                    Já tem conta? <Link className="hover:underline" to="/login">Entrar</Link>
+            {msg && (
+                <div
+                    className={`mb-3 p-2 rounded ${msg.startsWith('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}
+                >
+                    {msg}
                 </div>
-            </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Email</label>
+                    <input
+                        type="email"
+                        value={form.email}
+                        onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                        required
+                    />
+                    {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
+                </div>
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Senha</label>
+                    <input
+                        type="password"
+                        value={form.password}
+                        onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                        className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                        required
+                    />
+                    {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password}</p>}
+                </div>
+
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-1">Setor</label>
+                    {loadingSectors ? (
+                        <div>Carregando setores...</div>
+                    ) : (
+                        <select
+                            value={form.sectorId}
+                            onChange={e => setForm(f => ({ ...f, sectorId: e.target.value }))}
+                            className="w-full border px-3 py-2 rounded focus:outline-none focus:border-blue-500"
+                            required
+                        >
+                            <option value="">Selecione</option>
+                            {sectors.map(s => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    {errors.sectorId && <p className="text-red-600 text-sm mt-1">{errors.sectorId}</p>}
+                </div>
+
+                <button
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+                >
+                    Cadastrar
+                </button>
+            </form>
         </div>
     );
 }

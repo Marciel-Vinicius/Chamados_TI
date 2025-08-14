@@ -1,83 +1,98 @@
 // frontend/src/contexts/NotificationContext.jsx
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 
-const NotificationContext = createContext(null);
+const NotificationContext = createContext();
+export const useNotifications = () => useContext(NotificationContext);
 
-export function NotificationProvider({ children, apiBase }) {
+const getCleanToken = () => {
+    let token = localStorage.getItem('token') || '';
+    token = token.trim();
+    if (token.startsWith('Bearer ')) token = token.slice(7);
+    if (token.startsWith('"') && token.endsWith('"')) token = token.slice(1, -1);
+    return token;
+};
+
+const buildStreamUrl = () => {
+    const base = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const token = getCleanToken();
+    if (!token) return null;
+    return `${base}/tickets/stream?token=${encodeURIComponent(token)}`;
+};
+
+export function NotificationProvider({ children }) {
     const [notifications, setNotifications] = useState([]);
-    const idsRef = useRef(new Set()); // dedupe por id
     const esRef = useRef(null);
-    const retryRef = useRef(1000); // backoff inicial 1s, máx 30s
-
-    const token = useMemo(() => {
-        const raw = localStorage.getItem('token') || '';
-        return raw.replace(/^"|"$/g, ''); // sanitiza caso esteja com aspas
-    }, []);
+    const retryRef = useRef(1000);
 
     useEffect(() => {
-        if (!token) return;
-
-        let didCancel = false;
-
-        const connect = () => {
-            const url = `${apiBase || import.meta.env.VITE_API_URL || 'http://localhost:3000'}/notifications/stream?token=${encodeURIComponent(token)}`;
-
-            // Fecha conexão anterior (se houver)
-            if (esRef.current) {
-                try { esRef.current.close(); } catch { }
-            }
-
-            const es = new EventSource(url, { withCredentials: false });
-            esRef.current = es;
-
-            es.addEventListener('message', (evt) => {
-                retryRef.current = 1000; // reset backoff ao receber algo
-
-                try {
-                    const data = JSON.parse(evt.data);
-                    const id = data?.id || evt.lastEventId || `${Date.now()}-${Math.random()}`;
-                    if (!idsRef.current.has(id)) {
-                        idsRef.current.add(id);
-                        setNotifications(prev => {
-                            const next = [{ ...data, id, ts: Date.now() }, ...prev];
-                            // mantém no máx 50 notificações
-                            return next.slice(0, 50);
-                        });
-                    }
-                } catch { }
-            });
-
-            es.onerror = () => {
-                // Reconecta com backoff
-                try { es.close(); } catch { }
-                if (didCancel) return;
-                const wait = Math.min(retryRef.current, 30000);
-                setTimeout(() => connect(), wait);
-                retryRef.current *= 2;
-            };
-        };
-
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
         connect();
-
         return () => {
-            didCancel = true;
-            try { esRef.current?.close(); } catch { }
+            if (esRef.current) esRef.current.close();
         };
-    }, [token, apiBase]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    const markAllAsRead = () => setNotifications([]);
+    const connect = () => {
+        const url = buildStreamUrl();
+        if (!url) {
+            console.warn('[SSE] token ausente, não conectando.');
+            return;
+        }
+        console.log('[SSE] conectando em', url);
+        if (esRef.current) esRef.current.close();
+        const es = new EventSource(url);
+        esRef.current = es;
 
-    const value = useMemo(() => ({
-        notifications,
-        count: notifications.length,
-        markAllAsRead,
-    }), [notifications]);
+        es.addEventListener('connected', (e) => {
+            console.log('[SSE] conectado:', e.data);
+            retryRef.current = 1000;
+        });
+
+        es.addEventListener('notify', (e) => {
+            let data;
+            try {
+                data = JSON.parse(e.data);
+            } catch (err) {
+                console.error('[SSE] parse error:', err);
+                return;
+            }
+            const id = Date.now().toString(36) + Math.random().toString(36, 5);
+            const notification = { ...data, id, read: false, receivedAt: new Date() };
+            setNotifications(prev => [notification, ...prev]);
+
+            if ('Notification' in window && Notification.permission === 'granted') {
+                let title = '';
+                let body = '';
+                if (data.type === 'new-ticket') {
+                    title = 'Novo chamado';
+                    body = data.ticket.title;
+                } else if (data.type === 'new-comment') {
+                    title = 'Novo comentário';
+                    body = `${data.comment.User?.email || 'Alguém'}: ${data.comment.content}`;
+                }
+                new Notification(title, { body });
+            }
+        });
+
+        es.onerror = () => {
+            console.warn('[SSE] erro/desconectado. Reconectando em', retryRef.current, 'ms');
+            es.close();
+            setTimeout(() => {
+                retryRef.current = Math.min(retryRef.current * 2, 30000);
+                connect();
+            }, retryRef.current);
+        };
+    };
+
+    const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const markRead = (id) => setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
 
     return (
-        <NotificationContext.Provider value={value}>
+        <NotificationContext.Provider value={{ notifications, markAllRead, markRead }}>
             {children}
         </NotificationContext.Provider>
     );
 }
-
-export const useNotifications = () => useContext(NotificationContext);

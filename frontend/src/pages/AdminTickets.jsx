@@ -1,173 +1,524 @@
 // frontend/src/pages/AdminTickets.jsx
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { useEffect, useRef, useState } from 'react';
 
 export default function AdminTickets() {
   const [tickets, setTickets] = useState([]);
-  const [status, setStatus] = useState('');
-  const [prio, setPrio] = useState('');
-  const [busy, setBusy] = useState(true);
-  const [err, setErr] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [reasons, setReasons] = useState([]);
+  const [newReason, setNewReason] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [newCategory, setNewCategory] = useState('');
+  const [priorities, setPriorities] = useState([]);
+  const [newPriority, setNewPriority] = useState('');
+  const [sectors, setSectors] = useState([]);
+  const [newSector, setNewSector] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const prevTicketsCount = useRef(null);
+  const reconnectDelay = useRef(1000);
   const esRef = useRef(null);
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
-  const fetchAll = async () => {
-    setBusy(true); setErr('');
+  // util para formatar data/hora
+  const formatDateTime = iso => {
+    if (!iso) return '';
     try {
-      const params = {};
-      if (status) params.status = status;
-      if (prio) params.priority = prio;
-      const { data } = await axios.get('/tickets/all', { params });
-      setTickets(data || []);
-    } catch (e) {
-      setErr(e?.response?.data?.message || 'Falha ao carregar TI.');
-    } finally {
-      setBusy(false);
+      const d = new Date(iso);
+      return d.toLocaleString('pt-BR', { hour12: false });
+    } catch {
+      return iso;
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
-  useEffect(() => { fetchAll(); }, [status, prio]);
-
-  // SSE de tickets
+  // define header auth se tiver token
   useEffect(() => {
-    const raw = localStorage.getItem('token') || '';
-    const token = raw.replace(/^"|"$/g, '');
-    if (!token) return;
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
+  }, []);
 
-    const base = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-    const url = `${base}/tickets/stream?token=${encodeURIComponent(token)}`;
-    try { esRef.current?.close(); } catch { }
-    const es = new EventSource(url);
+  // carregamento inicial e SSE
+  useEffect(() => {
+    fetchAll();
+    setupSSE();
+
+    const interval = setInterval(() => fetchTickets(true), 5000);
+    return () => {
+      clearInterval(interval);
+      if (esRef.current) esRef.current.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  async function fetchAll() {
+    await Promise.all([
+      fetchTickets(false),
+      fetchReasons(),
+      fetchCategories(),
+      fetchPriorities(),
+      fetchSectors()
+    ]);
+  }
+
+  async function fetchTickets(notify) {
+    try {
+      const res = await axios.get(`${API}/tickets/all`);
+      const list = res.data;
+
+      if (prevTicketsCount.current === null) {
+        prevTicketsCount.current = list.length;
+      } else if (
+        notify &&
+        Notification.permission === 'granted' &&
+        list.length !== prevTicketsCount.current
+      ) {
+        new Notification('Atualização de chamados', {
+          body: `Total agora: ${list.length}`
+        });
+      }
+      prevTicketsCount.current = list.length;
+
+      setTickets(list);
+
+      if (selected) {
+        // atualiza detalhe se estiver aberto
+        const det = await axios.get(`${API}/tickets/${selected.id}`);
+        setSelected(det.data);
+        const comm = await axios.get(`${API}/tickets/${selected.id}/comments`);
+        setComments(comm.data);
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar chamados:', err);
+      setErrorMsg('Erro ao buscar chamados. Veja console.');
+      if (err.response) {
+        if (err.response.status === 403) {
+          setErrorMsg('Sem permissão para ver todos os chamados.');
+        }
+      }
+    }
+  }
+
+  async function fetchReasons() {
+    try {
+      const res = await axios.get(`${API}/reasons`);
+      setReasons(res.data);
+    } catch (err) {
+      console.warn('Erro ao carregar motivos', err);
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const res = await axios.get(`${API}/categories`);
+      setCategories(res.data);
+    } catch (err) {
+      console.warn('Erro ao carregar categorias', err);
+    }
+  }
+
+  async function fetchPriorities() {
+    try {
+      const res = await axios.get(`${API}/priorities`);
+      setPriorities(res.data);
+    } catch (err) {
+      console.warn('Erro ao carregar prioridades', err);
+    }
+  }
+
+  async function fetchSectors() {
+    try {
+      const res = await axios.get(`${API}/sectors`);
+      setSectors(res.data);
+    } catch (err) {
+      console.warn('Erro ao carregar setores', err);
+    }
+  }
+
+  async function addReason() {
+    if (!newReason.trim()) return;
+    try {
+      const res = await axios.post(`${API}/reasons`, { name: newReason.trim() });
+      setReasons(prev => [...prev, res.data]);
+      setNewReason('');
+    } catch (err) {
+      console.error('Erro ao adicionar motivo:', err);
+    }
+  }
+
+  async function addCategory() {
+    if (!newCategory.trim()) return;
+    try {
+      const res = await axios.post(`${API}/categories`, { name: newCategory.trim() });
+      setCategories(prev => [...prev, res.data]);
+      setNewCategory('');
+    } catch (err) {
+      console.error('Erro ao adicionar categoria:', err);
+    }
+  }
+
+  async function addPriority() {
+    if (!newPriority.trim()) return;
+    try {
+      const res = await axios.post(`${API}/priorities`, { name: newPriority.trim() });
+      setPriorities(prev => [...prev, res.data]);
+      setNewPriority('');
+    } catch (err) {
+      console.error('Erro ao adicionar prioridade:', err);
+    }
+  }
+
+  async function addSector() {
+    if (!newSector.trim()) return;
+    try {
+      const res = await axios.post(`${API}/sectors`, { name: newSector.trim() });
+      setSectors(prev => [...prev, res.data]);
+      setNewSector('');
+    } catch (err) {
+      console.error('Erro ao adicionar setor:', err);
+    }
+  }
+
+  async function selectTicket(ticket) {
+    setSelected(null);
+    try {
+      const det = await axios.get(`${API}/tickets/${ticket.id}`);
+      setSelected(det.data);
+      const comm = await axios.get(`${API}/tickets/${ticket.id}/comments`);
+      setComments(comm.data);
+    } catch (err) {
+      console.error('Erro ao buscar detalhes do chamado:', err);
+    }
+  }
+
+  async function addComment() {
+    if (!newComment.trim() || !selected) return;
+    try {
+      const res = await axios.post(`${API}/tickets/${selected.id}/comments`, {
+        content: newComment.trim()
+      });
+      setComments(prev => [...prev, res.data]);
+      setNewComment('');
+      if (Notification.permission === 'granted') {
+        new Notification('Comentário adicionado', {
+          body: res.data.content
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao adicionar comentário:', err);
+    }
+  }
+
+  function setupSSE() {
+    if (esRef.current) {
+      esRef.current.close();
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const streamUrl = `${API.replace(/\/+$/, '')}/tickets/stream?token=${token}`;
+    const es = new EventSource(streamUrl);
     esRef.current = es;
 
-    es.addEventListener('ticket', () => {
-      // chegou atualização de ticket => recarrega
-      fetchAll();
+    es.addEventListener('notify', e => {
+      try {
+        const payload = JSON.parse(e.data);
+        // não notifica se for comentário do próprio usuário que está logado (backend já evita em payload)
+        if (Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+        if (Notification.permission === 'granted') {
+          if (payload.type === 'new-ticket') {
+            new Notification('Novo chamado', {
+              body: payload.ticket.title
+            });
+          } else if (payload.type === 'new-comment') {
+            new Notification('Comentário novo', {
+              body: payload.comment?.content || 'Atualização'
+            });
+          }
+        }
+        fetchTickets(true);
+      } catch (err) {
+        console.error('Erro ao processar SSE notify:', err);
+      }
     });
 
     es.onerror = () => {
-      try { es.close(); } catch { }
-      // reconecta simples
+      es.close();
+      // reconectar exponencialmente
       setTimeout(() => {
-        const neo = new EventSource(url);
-        esRef.current = neo;
-        neo.addEventListener('ticket', () => fetchAll());
-      }, 2000);
+        reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
+        setupSSE();
+      }, reconnectDelay.current);
     };
 
-    return () => { try { es.close(); } catch { } };
-  }, []);
-
-  const updateStatus = async (id, newStatus) => {
-    try {
-      await axios.put(`/tickets/${id}/status`, { status: newStatus });
-      await fetchAll();
-    } catch (e) {
-      alert('Falha ao atualizar status.');
-    }
-  };
-
-  const colorByStatus = (s) => {
-    switch (String(s || '').toLowerCase()) {
-      case 'open': return 'bg-blue-100 text-blue-700';
-      case 'in_progress': return 'bg-yellow-100 text-yellow-700';
-      case 'closed': return 'bg-green-100 text-green-700';
-      default: return 'bg-gray-100 text-gray-700';
-    }
-  };
+    es.onopen = () => {
+      reconnectDelay.current = 1000;
+    };
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-white text-xl font-semibold">Admin TI — Chamados</h1>
-          <p className="text-white/70 text-sm">Gerencie os tickets abertos pelos usuários.</p>
+    <div className="max-w-7xl mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-4">Painel TI</h2>
+
+      {errorMsg && (
+        <div className="mb-4 p-2 bg-red-100 text-red-800 rounded">{errorMsg}</div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        {/* Motivos */}
+        <div className="p-4 border rounded shadow">
+          <h3 className="text-lg font-semibold mb-2">Motivos de Chamado</h3>
+          <div className="flex gap-2 mb-2">
+            <input
+              placeholder="Novo motivo"
+              value={newReason}
+              onChange={e => setNewReason(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <button
+              onClick={addReason}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+              type="button"
+            >
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {reasons.length ? (
+              reasons.map(r => (
+                <div
+                  key={r.id}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
+                >
+                  {r.name}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">Nenhum motivo</div>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <select
-            className="rounded-xl border-gray-300 text-sm"
-            value={status} onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">Status (todos)</option>
-            <option value="open">Aberto</option>
-            <option value="in_progress">Em andamento</option>
-            <option value="closed">Fechado</option>
-          </select>
-          <select
-            className="rounded-xl border-gray-300 text-sm"
-            value={prio} onChange={(e) => setPrio(e.target.value)}
-          >
-            <option value="">Prioridade (todas)</option>
-            <option value="Baixa">Baixa</option>
-            <option value="Média">Média</option>
-            <option value="Alta">Alta</option>
-          </select>
+
+        {/* Categorias */}
+        <div className="p-4 border rounded shadow">
+          <h3 className="text-lg font-semibold mb-2">Categorias</h3>
+          <div className="flex gap-2 mb-2">
+            <input
+              placeholder="Nova categoria"
+              value={newCategory}
+              onChange={e => setNewCategory(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <button
+              onClick={addCategory}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
+              type="button"
+            >
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {categories.length ? (
+              categories.map(c => (
+                <div
+                  key={c.id}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
+                >
+                  {c.name}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">Nenhuma categoria</div>
+            )}
+          </div>
+        </div>
+
+        {/* Prioridades */}
+        <div className="p-4 border rounded shadow">
+          <h3 className="text-lg font-semibold mb-2">Prioridades</h3>
+          <div className="flex gap-2 mb-2">
+            <input
+              placeholder="Nova prioridade"
+              value={newPriority}
+              onChange={e => setNewPriority(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <button
+              onClick={addPriority}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
+              type="button"
+            >
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {priorities.length ? (
+              priorities.map(p => (
+                <div
+                  key={p.id}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
+                >
+                  {p.name}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">Nenhuma prioridade</div>
+            )}
+          </div>
+        </div>
+
+        {/* Setores */}
+        <div className="p-4 border rounded shadow">
+          <h3 className="text-lg font-semibold mb-2">Setores</h3>
+          <div className="flex gap-2 mb-2">
+            <input
+              placeholder="Novo setor"
+              value={newSector}
+              onChange={e => setNewSector(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <button
+              onClick={addSector}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+              type="button"
+            >
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sectors.length ? (
+              sectors.map(s => (
+                <div
+                  key={s.id}
+                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
+                >
+                  {s.name}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">Nenhum setor</div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
-        {busy && <div className="p-6 text-gray-600 text-sm">Carregando...</div>}
-        {err && <div className="p-6 text-red-600 text-sm">{err}</div>}
-        {!busy && !err && tickets.length === 0 && (
-          <div className="p-6 text-gray-600 text-sm">Nenhum chamado encontrado.</div>
-        )}
-
-        {!busy && !err && tickets.length > 0 && (
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">#</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Título</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Usuário</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Categoria</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Prioridade</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Criado em</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map((t) => (
-                <tr key={t.id} className="border-t">
-                  <td className="px-4 py-3">{t.id}</td>
-                  <td className="px-4 py-3">{t.title || '-'}</td>
-                  <td className="px-4 py-3">{t?.User?.email || '-'}</td>
-                  <td className="px-4 py-3">{t.category || t?.Category?.name || '-'}</td>
-                  <td className="px-4 py-3">{t.priority || t?.Priority?.name || '-'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs ${colorByStatus(t.status)}`}>
-                      {t.status || '-'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {t.createdAt ? new Date(t.createdAt).toLocaleString() : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex gap-2">
-                      {t.status !== 'open' && (
-                        <button
-                          className="text-xs rounded-lg px-3 py-1 bg-blue-600 text-white"
-                          onClick={() => updateStatus(t.id, 'open')}
-                        >Reabrir</button>
-                      )}
-                      {t.status !== 'in_progress' && (
-                        <button
-                          className="text-xs rounded-lg px-3 py-1 bg-yellow-500 text-white"
-                          onClick={() => updateStatus(t.id, 'in_progress')}
-                        >Em andamento</button>
-                      )}
-                      {t.status !== 'closed' && (
-                        <button
-                          className="text-xs rounded-lg px-3 py-1 bg-green-600 text-white"
-                          onClick={() => updateStatus(t.id, 'closed')}
-                        >Fechar</button>
+      <div className="flex gap-6">
+        {/* Lista de chamados */}
+        <div className="w-1/3">
+          <div className="mb-4 flex justify-between items-center">
+            <div className="font-medium">Lista de Chamados</div>
+          </div>
+          <div className="space-y-2">
+            {tickets.length ? (
+              tickets.map(ticket => (
+                <div
+                  key={ticket.id}
+                  onClick={() => selectTicket(ticket)}
+                  className={`border rounded p-3 cursor-pointer flex justify-between transition ${!ticket.viewedByTI ? 'bg-yellow-50' : 'bg-white'
+                    }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold">{ticket.title}</div>
+                      {!ticket.viewedByTI && (
+                        <span className="bg-yellow-200 text-yellow-800 px-2 py-1 rounded text-xs">
+                          Novo
+                        </span>
                       )}
                     </div>
-                  </td>
-                </tr>
+                    <div className="text-sm text-gray-600">
+                      {ticket.Category ? ticket.Category.name : ticket.category} •{' '}
+                      {ticket.Priority ? ticket.Priority.name : ticket.priority}
+                    </div>
+                    {ticket.Reason && (
+                      <div className="text-xs text-gray-500">
+                        Motivo: {ticket.Reason.name}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                      Aberto em: {formatDateTime(ticket.createdAt)}
+                    </div>
+                  </div>
+                  <div className="text-sm flex flex-col justify-between items-end">
+                    <div>{ticket.status}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div>Nenhum chamado encontrado.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Detalhe do chamado */}
+        {selected && (
+          <div className="w-2/3 border rounded p-4">
+            <h3 className="text-xl font-semibold mb-2">{selected.title}</h3>
+            <div className="flex gap-4 mb-3 flex-wrap">
+              <div className="text-sm text-gray-600">
+                {selected.Category ? selected.Category.name : selected.category} •{' '}
+                {selected.Priority ? selected.Priority.name : selected.priority}
+              </div>
+              {selected.Reason && (
+                <div className="text-sm text-gray-600">
+                  Motivo: {selected.Reason.name}
+                </div>
+              )}
+              <div className="text-sm text-gray-600">
+                Aberto em: {formatDateTime(selected.createdAt)}
+              </div>
+              <div className="text-sm text-gray-600">
+                Criador: {selected.User?.email || '—'}
+              </div>
+            </div>
+
+            <p className="mb-4 whitespace-pre-wrap">{selected.description}</p>
+
+            {selected.attachment && (
+              <div className="mb-4">
+                <a
+                  href={`${API}${selected.attachment}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline"
+                >
+                  Ver anexo
+                </a>
+              </div>
+            )}
+
+            <div className="mb-6">
+              <div className="font-medium mb-2">Comentários</div>
+              {comments.map(c => (
+                <div key={c.id} className="border rounded p-2 mb-2">
+                  <div className="text-xs text-gray-500 mb-1 flex justify-between">
+                    <div>
+                      {c.User?.email || 'Usuário'} • {formatDateTime(c.createdAt)}
+                    </div>
+                  </div>
+                  <div>{c.content}</div>
+                </div>
               ))}
-            </tbody>
-          </table>
+              <div className="flex gap-2 mt-2">
+                <input
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  placeholder="Adicionar comentário"
+                  className="flex-1 border px-3 py-2 rounded"
+                />
+                <button
+                  onClick={addComment}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                  type="button"
+                >
+                  Enviar
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

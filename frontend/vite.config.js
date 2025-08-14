@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5174,
+    port: 5173,
     proxy: {
+      // proxy para o backend Express na porta 3000
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
@@ -17,19 +18,9 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      '/uploads': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/sectors': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false,
-      },
     },
   },
   define: {
-    'process.env': process.env,
-  },
+    'process.env': process.env
+  }
 });
