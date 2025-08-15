@@ -1,525 +1,376 @@
 // frontend/src/pages/AdminTickets.jsx
-import { useEffect, useState, useRef } from 'react';
-import axios from 'axios';
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 
 export default function AdminTickets() {
+  const API = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+
+  // ---- estados ----
   const [tickets, setTickets] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
+  const [ticketsError, setTicketsError] = useState("");
+
   const [selected, setSelected] = useState(null);
   const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
-  const [reasons, setReasons] = useState([]);
-  const [newReason, setNewReason] = useState('');
-  const [categories, setCategories] = useState([]);
-  const [newCategory, setNewCategory] = useState('');
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+
+  // >>> Mantemos apenas Categoria / Prioridade / Setor
+  const [cats, setCats] = useState([]);
+  const [catInput, setCatInput] = useState("");
+
   const [priorities, setPriorities] = useState([]);
-  const [newPriority, setNewPriority] = useState('');
+  const [priorityInput, setPriorityInput] = useState("");
+
   const [sectors, setSectors] = useState([]);
-  const [newSector, setNewSector] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const prevTicketsCount = useRef(null);
-  const reconnectDelay = useRef(1000);
-  const esRef = useRef(null);
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const [sectorInput, setSectorInput] = useState("");
 
-  // util para formatar data/hora
-  const formatDateTime = iso => {
-    if (!iso) return '';
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString('pt-BR', { hour12: false });
-    } catch {
-      return iso;
-    }
-  };
+  const [catalogError, setCatalogError] = useState("");
+  const [saving, setSaving] = useState({ category: false, priority: false, sector: false });
 
-  // define header auth se tiver token
+  // Authorization padrão
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
+    const token = localStorage.getItem("token");
+    if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   }, []);
 
-  // carregamento inicial e SSE
+  // carregamentos
   useEffect(() => {
-    fetchAll();
-    setupSSE();
+    (async () => {
+      try {
+        await Promise.all([fetchTickets(), fetchCategories(), fetchPriorities(), fetchSectors()]);
+      } finally {
+        setTicketsLoading(false);
+      }
+    })();
+  }, []);
 
-    const interval = setInterval(() => fetchTickets(true), 5000);
-    return () => {
-      clearInterval(interval);
-      if (esRef.current) esRef.current.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
-
-  async function fetchAll() {
-    await Promise.all([
-      fetchTickets(false),
-      fetchReasons(),
-      fetchCategories(),
-      fetchPriorities(),
-      fetchSectors()
-    ]);
-  }
-
-  async function fetchTickets(notify) {
+  // ---- fetchers ----
+  async function fetchTickets() {
+    setTicketsError("");
     try {
-      const res = await axios.get(`${API}/tickets/all`);
-      const list = res.data;
-
-      if (prevTicketsCount.current === null) {
-        prevTicketsCount.current = list.length;
-      } else if (
-        notify &&
-        Notification.permission === 'granted' &&
-        list.length !== prevTicketsCount.current
-      ) {
-        new Notification('Atualização de chamados', {
-          body: `Total agora: ${list.length}`
-        });
-      }
-      prevTicketsCount.current = list.length;
-
-      setTickets(list);
-
-      if (selected) {
-        // atualiza detalhe se estiver aberto
-        const det = await axios.get(`${API}/tickets/${selected.id}`);
-        setSelected(det.data);
-        const comm = await axios.get(`${API}/tickets/${selected.id}/comments`);
-        setComments(comm.data);
-      }
+      const { data } = await axios.get(`${API}/tickets/all`);
+      setTickets(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Erro ao atualizar chamados:', err);
-      setErrorMsg('Erro ao buscar chamados. Veja console.');
-      if (err.response) {
-        if (err.response.status === 403) {
-          setErrorMsg('Sem permissão para ver todos os chamados.');
-        }
-      }
+      console.error("[GET /tickets/all] erro:", err);
+      const msg =
+        err?.response?.status === 401
+          ? "Não autenticado. Faça login novamente."
+          : err?.response?.status === 403
+            ? "Sem permissão para visualizar os chamados do TI."
+            : "Erro ao buscar chamados. Veja console.";
+      setTicketsError(msg);
     }
   }
-
-  async function fetchReasons() {
-    try {
-      const res = await axios.get(`${API}/reasons`);
-      setReasons(res.data);
-    } catch (err) {
-      console.warn('Erro ao carregar motivos', err);
-    }
-  }
-
   async function fetchCategories() {
     try {
-      const res = await axios.get(`${API}/categories`);
-      setCategories(res.data);
-    } catch (err) {
-      console.warn('Erro ao carregar categorias', err);
+      const { data } = await axios.get(`${API}/categories`);
+      setCats(Array.isArray(data) ? data : []);
+    } catch {
+      setCatalogError("Falha ao carregar Categorias.");
     }
   }
-
   async function fetchPriorities() {
     try {
-      const res = await axios.get(`${API}/priorities`);
-      setPriorities(res.data);
-    } catch (err) {
-      console.warn('Erro ao carregar prioridades', err);
+      const { data } = await axios.get(`${API}/priorities`);
+      setPriorities(Array.isArray(data) ? data : []);
+    } catch {
+      setCatalogError("Falha ao carregar Prioridades.");
     }
   }
-
   async function fetchSectors() {
     try {
-      const res = await axios.get(`${API}/sectors`);
-      setSectors(res.data);
-    } catch (err) {
-      console.warn('Erro ao carregar setores', err);
+      const { data } = await axios.get(`${API}/sectors`);
+      setSectors(Array.isArray(data) ? data : []);
+    } catch {
+      setCatalogError("Falha ao carregar Setores.");
     }
   }
 
-  async function addReason() {
-    if (!newReason.trim()) return;
+  async function fetchComments(ticketId) {
+    setCommentsLoading(true);
     try {
-      const res = await axios.post(`${API}/reasons`, { name: newReason.trim() });
-      setReasons(prev => [...prev, res.data]);
-      setNewReason('');
-    } catch (err) {
-      console.error('Erro ao adicionar motivo:', err);
+      const { data } = await axios.get(`${API}/tickets/${ticketId}/comments`);
+      setComments(Array.isArray(data) ? data : []);
+    } finally {
+      setCommentsLoading(false);
     }
   }
 
-  async function addCategory() {
-    if (!newCategory.trim()) return;
-    try {
-      const res = await axios.post(`${API}/categories`, { name: newCategory.trim() });
-      setCategories(prev => [...prev, res.data]);
-      setNewCategory('');
-    } catch (err) {
-      console.error('Erro ao adicionar categoria:', err);
-    }
-  }
+  useEffect(() => {
+    if (selected?.id) fetchComments(selected.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
 
-  async function addPriority() {
-    if (!newPriority.trim()) return;
-    try {
-      const res = await axios.post(`${API}/priorities`, { name: newPriority.trim() });
-      setPriorities(prev => [...prev, res.data]);
-      setNewPriority('');
-    } catch (err) {
-      console.error('Erro ao adicionar prioridade:', err);
-    }
-  }
-
-  async function addSector() {
-    if (!newSector.trim()) return;
-    try {
-      const res = await axios.post(`${API}/sectors`, { name: newSector.trim() });
-      setSectors(prev => [...prev, res.data]);
-      setNewSector('');
-    } catch (err) {
-      console.error('Erro ao adicionar setor:', err);
-    }
-  }
-
-  async function selectTicket(ticket) {
-    setSelected(null);
-    try {
-      const det = await axios.get(`${API}/tickets/${ticket.id}`);
-      setSelected(det.data);
-      const comm = await axios.get(`${API}/tickets/${ticket.id}/comments`);
-      setComments(comm.data);
-    } catch (err) {
-      console.error('Erro ao buscar detalhes do chamado:', err);
-    }
-  }
-
-  async function addComment() {
-    if (!newComment.trim() || !selected) return;
-    try {
-      const res = await axios.post(`${API}/tickets/${selected.id}/comments`, {
-        content: newComment.trim()
-      });
-      setComments(prev => [...prev, res.data]);
-      setNewComment('');
-      if (Notification.permission === 'granted') {
-        new Notification('Comentário adicionado', {
-          body: res.data.content
-        });
-      }
-    } catch (err) {
-      console.error('Erro ao adicionar comentário:', err);
-    }
-  }
-
-  function setupSSE() {
-    if (esRef.current) {
-      esRef.current.close();
-    }
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const streamUrl = `${API.replace(/\/+$/, '')}/tickets/stream?token=${token}`;
-    const es = new EventSource(streamUrl);
-    esRef.current = es;
-
-    es.addEventListener('notify', e => {
-      try {
-        const payload = JSON.parse(e.data);
-        // não notifica se for comentário do próprio usuário que está logado (backend já evita em payload)
-        if (Notification.permission === 'default') {
-          Notification.requestPermission();
-        }
-        if (Notification.permission === 'granted') {
-          if (payload.type === 'new-ticket') {
-            new Notification('Novo chamado', {
-              body: payload.ticket.title
-            });
-          } else if (payload.type === 'new-comment') {
-            new Notification('Comentário novo', {
-              body: payload.comment?.content || 'Atualização'
-            });
-          }
-        }
-        fetchTickets(true);
-      } catch (err) {
-        console.error('Erro ao processar SSE notify:', err);
-      }
-    });
-
-    es.onerror = () => {
-      es.close();
-      // reconectar exponencialmente
-      setTimeout(() => {
-        reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
-        setupSSE();
-      }, reconnectDelay.current);
+  // ---- criação de catálogos ----
+  async function addItem(kind) {
+    const map = {
+      category: { endpoint: "categories", value: catInput, setter: setCats, clear: () => setCatInput("") },
+      priority: { endpoint: "priorities", value: priorityInput, setter: setPriorities, clear: () => setPriorityInput("") },
+      sector: { endpoint: "sectors", value: sectorInput, setter: setSectors, clear: () => setSectorInput("") },
     };
+    const cfg = map[kind];
+    if (!cfg) return;
+    const name = (cfg.value || "").trim();
+    if (!name) return;
 
-    es.onopen = () => {
-      reconnectDelay.current = 1000;
-    };
+    try {
+      setSaving((s) => ({ ...s, [kind]: true }));
+      const { data } = await axios.post(`${API}/${cfg.endpoint}`, { name });
+      cfg.setter((prev) => [...prev, data]);
+      cfg.clear();
+      setCatalogError("");
+    } catch (err) {
+      console.error(err);
+      const msg = err?.response?.status === 409 ? "Já existe um item com esse nome." : "Falha ao salvar.";
+      setCatalogError(msg);
+    } finally {
+      setSaving((s) => ({ ...s, [kind]: false }));
+    }
   }
+
+  // ---- derivados ----
+  const sortedTickets = useMemo(() => {
+    const arr = Array.isArray(tickets) ? [...tickets] : [];
+    arr.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+    return arr;
+  }, [tickets]);
 
   return (
-    <div className="max-w-7xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Painel TI</h2>
-
-      {errorMsg && (
-        <div className="mb-4 p-2 bg-red-100 text-red-800 rounded">{errorMsg}</div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        {/* Motivos */}
-        <div className="p-4 border rounded shadow">
-          <h3 className="text-lg font-semibold mb-2">Motivos de Chamado</h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              placeholder="Novo motivo"
-              value={newReason}
-              onChange={e => setNewReason(e.target.value)}
-              className="border px-3 py-2 rounded flex-1"
-            />
-            <button
-              onClick={addReason}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
-              type="button"
-            >
-              Adicionar
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {reasons.length ? (
-              reasons.map(r => (
-                <div
-                  key={r.id}
-                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
-                >
-                  {r.name}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Nenhum motivo</div>
-            )}
-          </div>
-        </div>
-
-        {/* Categorias */}
-        <div className="p-4 border rounded shadow">
-          <h3 className="text-lg font-semibold mb-2">Categorias</h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              placeholder="Nova categoria"
-              value={newCategory}
-              onChange={e => setNewCategory(e.target.value)}
-              className="border px-3 py-2 rounded flex-1"
-            />
-            <button
-              onClick={addCategory}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
-              type="button"
-            >
-              Adicionar
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {categories.length ? (
-              categories.map(c => (
-                <div
-                  key={c.id}
-                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
-                >
-                  {c.name}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Nenhuma categoria</div>
-            )}
-          </div>
-        </div>
-
-        {/* Prioridades */}
-        <div className="p-4 border rounded shadow">
-          <h3 className="text-lg font-semibold mb-2">Prioridades</h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              placeholder="Nova prioridade"
-              value={newPriority}
-              onChange={e => setNewPriority(e.target.value)}
-              className="border px-3 py-2 rounded flex-1"
-            />
-            <button
-              onClick={addPriority}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
-              type="button"
-            >
-              Adicionar
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {priorities.length ? (
-              priorities.map(p => (
-                <div
-                  key={p.id}
-                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
-                >
-                  {p.name}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Nenhuma prioridade</div>
-            )}
-          </div>
-        </div>
-
-        {/* Setores */}
-        <div className="p-4 border rounded shadow">
-          <h3 className="text-lg font-semibold mb-2">Setores</h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              placeholder="Novo setor"
-              value={newSector}
-              onChange={e => setNewSector(e.target.value)}
-              className="border px-3 py-2 rounded flex-1"
-            />
-            <button
-              onClick={addSector}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-              type="button"
-            >
-              Adicionar
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {sectors.length ? (
-              sectors.map(s => (
-                <div
-                  key={s.id}
-                  className="bg-gray-100 px-3 py-1 rounded text-sm flex items-center"
-                >
-                  {s.name}
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">Nenhum setor</div>
-            )}
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Painel TI</h1>
+        <button onClick={() => fetchTickets()} className="rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700">
+          Recarregar
+        </button>
       </div>
 
-      <div className="flex gap-6">
-        {/* Lista de chamados */}
-        <div className="w-1/3">
-          <div className="mb-4 flex justify-between items-center">
-            <div className="font-medium">Lista de Chamados</div>
-          </div>
-          <div className="space-y-2">
-            {tickets.length ? (
-              tickets.map(ticket => (
-                <div
-                  key={ticket.id}
-                  onClick={() => selectTicket(ticket)}
-                  className={`border rounded p-3 cursor-pointer flex justify-between transition ${!ticket.viewedByTI ? 'bg-yellow-50' : 'bg-white'
-                    }`}
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="font-semibold">{ticket.title}</div>
-                      {!ticket.viewedByTI && (
-                        <span className="bg-yellow-200 text-yellow-800 px-2 py-1 rounded text-xs">
-                          Novo
-                        </span>
-                      )}
+      {ticketsError && (
+        <div className="rounded-lg border border-red-300 bg-red-50 text-red-700 px-4 py-3">{ticketsError}</div>
+      )}
+      {catalogError && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3">{catalogError}</div>
+      )}
+
+      {/* ==== Catálogos (só Categoria, Prioridade, Setor) ==== */}
+      <section id="admin-catalog" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <CatalogCard
+          title="Categorias"
+          placeholder="Nova categoria"
+          value={catInput}
+          onChange={setCatInput}
+          onAdd={() => addItem("category")}
+          loading={saving.category}
+        >
+          <Chips items={cats} />
+        </CatalogCard>
+
+        <CatalogCard
+          title="Prioridades"
+          placeholder="Nova prioridade"
+          value={priorityInput}
+          onChange={setPriorityInput}
+          onAdd={() => addItem("priority")}
+          loading={saving.priority}
+        >
+          <Chips items={priorities} />
+        </CatalogCard>
+
+        <CatalogCard
+          title="Setores"
+          placeholder="Novo setor"
+          value={sectorInput}
+          onChange={setSectorInput}
+          onAdd={() => addItem("sector")}
+          loading={saving.sector}
+        >
+          <Chips items={sectors} />
+        </CatalogCard>
+      </section>
+
+      {/* ==== Lista + Detalhes ==== */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Lista de Chamados</h2>
+          {ticketsLoading ? (
+            <div className="rounded-lg border p-4 animate-pulse text-gray-500">Carregando chamados...</div>
+          ) : sortedTickets.length === 0 ? (
+            <div className="rounded-lg border p-4 text-gray-500">Nenhum chamado encontrado.</div>
+          ) : (
+            <ul className="space-y-3">
+              {sortedTickets.map((t) => (
+                <li key={`ticket-${t.id}`}>
+                  <button
+                    className={`w-full text-left rounded-xl border p-4 hover:bg-gray-50 ${selected?.id === t.id ? "ring-2 ring-blue-500" : ""
+                      }`}
+                    onClick={() => setSelected(t)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">{t.title}</div>
+                      <StatusPill status={t.status} />
                     </div>
-                    <div className="text-sm text-gray-600">
-                      {ticket.Category ? ticket.Category.name : ticket.category} •{' '}
-                      {ticket.Priority ? ticket.Priority.name : ticket.priority}
+                    <div className="mt-1 text-sm text-gray-600">
+                      {/* Motivo removido */}
+                      {t.category || "Sem categoria"}
+                      {t.priority ? ` • ${t.priority}` : ""}
                     </div>
-                    {ticket.Reason && (
-                      <div className="text-xs text-gray-500">
-                        Motivo: {ticket.Reason.name}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      Aberto em: {formatDateTime(ticket.createdAt)}
+                    <div className="mt-1 text-xs text-gray-500">
+                      Aberto em: {t.createdAt ? new Date(t.createdAt).toLocaleString("pt-BR") : "—"}
                     </div>
-                  </div>
-                  <div className="text-sm flex flex-col justify-between items-end">
-                    <div>{ticket.status}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div>Nenhum chamado encontrado.</div>
-            )}
-          </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {/* Detalhe do chamado */}
-        {selected && (
-          <div className="w-2/3 border rounded p-4">
-            <h3 className="text-xl font-semibold mb-2">{selected.title}</h3>
-            <div className="flex gap-4 mb-3 flex-wrap">
-              <div className="text-sm text-gray-600">
-                {selected.Category ? selected.Category.name : selected.category} •{' '}
-                {selected.Priority ? selected.Priority.name : selected.priority}
-              </div>
-              {selected.Reason && (
-                <div className="text-sm text-gray-600">
-                  Motivo: {selected.Reason.name}
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Detalhes</h2>
+          {!selected ? (
+            <div className="rounded-lg border p-6 text-gray-500">Selecione um chamado para ver detalhes.</div>
+          ) : (
+            <TicketDetails
+              ticket={selected}
+              comments={comments}
+              commentsLoading={commentsLoading}
+              newComment={newComment}
+              setNewComment={setNewComment}
+              onSendComment={addComment}
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+
+  // ---- helpers ----
+  async function addComment() {
+    const content = newComment.trim();
+    if (!selected?.id || !content) return;
+    try {
+      const { data } = await axios.post(`${API}/tickets/${selected.id}/comments`, { content });
+      setComments((prev) => [...prev, data]);
+      setNewComment("");
+    } catch {
+      alert("Falha ao enviar comentário.");
+    }
+  }
+}
+
+/* ---------- Subcomponentes ---------- */
+
+function CatalogCard({ title, placeholder, value, onChange, onAdd, loading, children }) {
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="mb-3 font-semibold">{title}</div>
+      <div className="space-y-3">
+        <div className="flex">
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="flex-1 rounded-lg border px-3 py-2"
+            placeholder={placeholder}
+          />
+          <button
+            onClick={onAdd}
+            disabled={loading}
+            className="ml-2 rounded-lg px-3 py-2 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Adicionar
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Chips({ items }) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return <div className="text-sm text-gray-500">Nenhum item cadastrado.</div>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((i) => (
+        <span
+          key={`chip-${i.id}-${i.name}`}
+          className="inline-flex items-center rounded-full border px-3 py-1 text-sm bg-gray-50"
+        >
+          {i.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function StatusPill({ status }) {
+  const map =
+    status === "Concluído"
+      ? "bg-blue-100 text-blue-800"
+      : status === "Em andamento"
+        ? "bg-amber-100 text-amber-800"
+        : "bg-emerald-100 text-emerald-800";
+  return <span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${map}`}>{status || "Aberto"}</span>;
+}
+
+function Detail({ label, value }) {
+  return (
+    <div className="text-sm">
+      <div className="text-gray-500">{label}</div>
+      <div className="font-medium">{value ?? "—"}</div>
+    </div>
+  );
+}
+
+function TicketDetails({ ticket, comments, commentsLoading, newComment, setNewComment, onSendComment }) {
+  return (
+    <div className="rounded-2xl border p-6">
+      <h3 className="text-xl font-bold">{ticket.title}</h3>
+      <div className="mt-2 text-sm text-gray-700">{ticket.description}</div>
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        {/* Motivo removido */}
+        <Detail label="Categoria" value={ticket.category || "—"} />
+        <Detail label="Prioridade" value={ticket.priority || "—"} />
+        <Detail label="Status" value={<StatusPill status={ticket.status} />} />
+        <Detail label="Setor" value={ticket.sector || "—"} />
+        <Detail label="Criador" value={ticket?.User?.email || ticket?.creator || "—"} />
+        <Detail
+          label="Aberto em"
+          value={ticket.createdAt ? new Date(ticket.createdAt).toLocaleString("pt-BR") : "—"}
+        />
+      </div>
+
+      <div className="mt-6">
+        <h4 className="font-semibold mb-2">Comentários</h4>
+        {commentsLoading ? (
+          <div className="text-gray-500 text-sm">Carregando comentários...</div>
+        ) : comments.length === 0 ? (
+          <div className="text-gray-500 text-sm">Nenhum comentário ainda.</div>
+        ) : (
+          <ul className="space-y-3">
+            {comments.map((c) => (
+              <li key={`comment-${c.id}`} className="rounded-lg border p-3">
+                <div className="text-sm">{c.content}</div>
+                <div className="mt-1 text-xs text-gray-500">
+                  {c.User?.email || "Desconhecido"} — {c.createdAt ? new Date(c.createdAt).toLocaleString("pt-BR") : ""}
                 </div>
-              )}
-              <div className="text-sm text-gray-600">
-                Aberto em: {formatDateTime(selected.createdAt)}
-              </div>
-              <div className="text-sm text-gray-600">
-                Criador: {selected.User?.email || '—'}
-              </div>
-            </div>
-
-            <p className="mb-4 whitespace-pre-wrap">{selected.description}</p>
-
-            {selected.attachment && (
-              <div className="mb-4">
-                <a
-                  href={`${API}${selected.attachment}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 underline"
-                >
-                  Ver anexo
-                </a>
-              </div>
-            )}
-
-            <div className="mb-6">
-              <div className="font-medium mb-2">Comentários</div>
-              {comments.map(c => (
-                <div key={c.id} className="border rounded p-2 mb-2">
-                  <div className="text-xs text-gray-500 mb-1 flex justify-between">
-                    <div>
-                      {c.User?.email || 'Usuário'} • {formatDateTime(c.createdAt)}
-                    </div>
-                  </div>
-                  <div>{c.content}</div>
-                </div>
-              ))}
-              <div className="flex gap-2 mt-2">
-                <input
-                  value={newComment}
-                  onChange={e => setNewComment(e.target.value)}
-                  placeholder="Adicionar comentário"
-                  className="flex-1 border px-3 py-2 rounded"
-                />
-                <button
-                  onClick={addComment}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                  type="button"
-                >
-                  Enviar
-                </button>
-              </div>
-            </div>
-          </div>
+              </li>
+            ))}
+          </ul>
         )}
+
+        <div className="mt-3 flex gap-2">
+          <input
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            className="flex-1 rounded-lg border px-3 py-2"
+            placeholder="Escreva um comentário…"
+          />
+          <button onClick={onSendComment} className="rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700">
+            Enviar
+          </button>
+        </div>
       </div>
     </div>
   );

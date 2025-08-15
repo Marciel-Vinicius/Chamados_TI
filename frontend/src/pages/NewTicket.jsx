@@ -1,210 +1,190 @@
 // frontend/src/pages/NewTicket.jsx
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 export default function NewTicket() {
-    const [data, setData] = useState({
-        title: '',
-        description: '',
-        category: '',
-        priority: '',
-        reasonId: '',
-        categoryId: '',
-        priorityId: ''
-    });
-    const [file, setFile] = useState(null);
-    const [msg, setMsg] = useState('');
+    const API = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+    const navigate = useNavigate();
+
+    const [title, setTitle] = useState("");
+    const [description, setDescription] = useState("");
+
     const [categories, setCategories] = useState([]);
     const [priorities, setPriorities] = useState([]);
-    const [reasons, setReasons] = useState([]);
-    const [loadingMeta, setLoadingMeta] = useState(true);
-    const navigate = useNavigate();
-    const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const [sectors, setSectors] = useState([]);
+
+    const [categoryId, setCategoryId] = useState("");
+    const [priorityId, setPriorityId] = useState("");
+    const [sectorId, setSectorId] = useState("");
+
+    const [files, setFiles] = useState([]);
+    const [submitting, setSubmitting] = useState(false);
+    const [errorMsg, setErrorMsg] = useState("");
+
+    // Authorization padrão
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }, []);
 
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (token) axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-        async function loadMeta() {
-            setLoadingMeta(true);
+        (async () => {
             try {
-                const [cRes, pRes, rRes] = await Promise.all([
+                const [cats, pris, secs] = await Promise.all([
                     axios.get(`${API}/categories`),
                     axios.get(`${API}/priorities`),
-                    axios.get(`${API}/reasons`)
+                    axios.get(`${API}/sectors`),
                 ]);
-                setCategories(Array.isArray(cRes.data) ? cRes.data : []);
-                setPriorities(Array.isArray(pRes.data) ? pRes.data : []);
-                setReasons(Array.isArray(rRes.data) ? rRes.data : []);
+                setCategories(cats.data || []);
+                setPriorities(pris.data || []);
+                setSectors(secs.data || []);
             } catch (err) {
-                console.error('Erro carregando metadados:', err);
-                setMsg('Falha ao carregar categorias/prioridades/motivos.');
-            } finally {
-                setLoadingMeta(false);
+                console.error("Falha ao carregar listas:", err);
+                setErrorMsg("Falha ao carregar listas de apoio. Tente novamente.");
             }
-        }
-        loadMeta();
+        })();
     }, [API]);
 
-    const onChange = e => {
-        const { name, value } = e.target;
-        setData(prev => ({ ...prev, [name]: value }));
-        if (name === 'categoryId') setData(prev => ({ ...prev, category: '' }));
-        if (name === 'priorityId') setData(prev => ({ ...prev, priority: '' }));
-    };
+    function onFileChange(e) {
+        setFiles(Array.from(e.target.files || []));
+    }
 
-    const onFileChange = e => setFile(e.target.files[0]);
-
-    const onSubmit = async e => {
+    async function handleSubmit(e) {
         e.preventDefault();
-        const form = new FormData();
-        form.append('title', data.title);
-        form.append('description', data.description);
+        setErrorMsg("");
 
-        if (data.categoryId) form.append('categoryId', data.categoryId);
-        else if (data.category) form.append('category', data.category);
-
-        if (data.priorityId) form.append('priorityId', data.priorityId);
-        else if (data.priority) form.append('priority', data.priority);
-
-        if (data.reasonId) form.append('reasonId', data.reasonId);
-        if (file) form.append('attachment', file);
+        if (!title.trim() || !description.trim() || !categoryId || !priorityId || !sectorId) {
+            setErrorMsg("Preencha título, descrição, categoria, prioridade e setor.");
+            return;
+        }
 
         try {
+            setSubmitting(true);
+
+            // Usa FormData para suportar anexos
+            const form = new FormData();
+            form.append("title", title.trim());
+            form.append("description", description.trim());
+            form.append("categoryId", categoryId);
+            form.append("priorityId", priorityId);
+            form.append("sectorId", sectorId);
+            // Motivo REMOVIDO — não enviamos reasonId nem reason.
+
+            files.forEach((f) => form.append("files", f));
+
             await axios.post(`${API}/tickets`, form, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+                headers: { "Content-Type": "multipart/form-data" },
             });
-            navigate('/tickets');
+
+            navigate("/tickets"); // volta para a lista do usuário
         } catch (err) {
-            console.error(err);
-            setMsg('Erro ao enviar chamado.');
+            console.error("Erro ao abrir chamado:", err);
+            const msg =
+                err?.response?.status === 400
+                    ? "Dados inválidos. Revise os campos."
+                    : err?.response?.data?.message || "Erro ao abrir chamado.";
+            setErrorMsg(msg);
+        } finally {
+            setSubmitting(false);
         }
-    };
+    }
 
     return (
-        <div className="max-w-md mx-auto p-6">
-            <h2 className="text-2xl font-semibold mb-4">Novo Chamado</h2>
-            {msg && <div className="mb-3 text-red-600">{msg}</div>}
-            <form onSubmit={onSubmit} className="bg-white shadow rounded p-6 space-y-4">
+        <div className="max-w-3xl mx-auto">
+            <h1 className="text-2xl font-bold mb-6">Abrir Chamado</h1>
+
+            {errorMsg && (
+                <div className="mb-4 rounded-lg border border-red-300 bg-red-50 text-red-700 px-4 py-3">{errorMsg}</div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium mb-1">Título</label>
                     <input
-                        name="title"
-                        value={data.title}
-                        onChange={onChange}
-                        className="w-full border px-3 py-2 rounded"
-                        required
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                        placeholder="Ex.: Impressora não imprime"
                     />
                 </div>
 
                 <div>
                     <label className="block text-sm font-medium mb-1">Descrição</label>
                     <textarea
-                        name="description"
-                        value={data.description}
-                        onChange={onChange}
-                        rows={4}
-                        className="w-full border px-3 py-2 rounded"
-                        required
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2 min-h-[120px]"
+                        placeholder="Descreva o problema com detalhes…"
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* Campo Motivo foi REMOVIDO */}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-medium mb-1">Categoria</label>
-                        {loadingMeta ? (
-                            <div className="text-sm text-gray-500">Carregando...</div>
-                        ) : (
-                            <>
-                                <select
-                                    name="categoryId"
-                                    value={data.categoryId}
-                                    onChange={onChange}
-                                    className="w-full border px-3 py-2 rounded"
-                                >
-                                    <option value="">-- Selecione --</option>
-                                    {categories.map(c => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                {!data.categoryId && (
-                                    <input
-                                        name="category"
-                                        value={data.category}
-                                        onChange={onChange}
-                                        placeholder="Outra categoria"
-                                        className="w-full border px-3 py-2 rounded mt-2"
-                                    />
-                                )}
-                            </>
-                        )}
+                        <select
+                            value={categoryId}
+                            onChange={(e) => setCategoryId(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2 bg-white"
+                        >
+                            <option value="">Selecione…</option>
+                            {categories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium mb-1">Prioridade</label>
-                        {loadingMeta ? (
-                            <div className="text-sm text-gray-500">Carregando...</div>
-                        ) : (
-                            <>
-                                <select
-                                    name="priorityId"
-                                    value={data.priorityId}
-                                    onChange={onChange}
-                                    className="w-full border px-3 py-2 rounded"
-                                >
-                                    <option value="">-- Selecione --</option>
-                                    {priorities.map(p => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                {!data.priorityId && (
-                                    <input
-                                        name="priority"
-                                        value={data.priority}
-                                        onChange={onChange}
-                                        placeholder="Outra prioridade"
-                                        className="w-full border px-3 py-2 rounded mt-2"
-                                    />
-                                )}
-                            </>
-                        )}
+                        <select
+                            value={priorityId}
+                            onChange={(e) => setPriorityId(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2 bg-white"
+                        >
+                            <option value="">Selecione…</option>
+                            {priorities.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                    {p.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Setor</label>
+                        <select
+                            value={sectorId}
+                            onChange={(e) => setSectorId(e.target.value)}
+                            className="w-full rounded-lg border px-3 py-2 bg-white"
+                        >
+                            <option value="">Selecione…</option>
+                            {sectors.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Motivo (opcional)</label>
-                    {loadingMeta ? (
-                        <div className="text-sm text-gray-500">Carregando...</div>
-                    ) : (
-                        <select
-                            name="reasonId"
-                            value={data.reasonId}
-                            onChange={onChange}
-                            className="w-full border px-3 py-2 rounded"
-                        >
-                            <option value="">-- Selecione --</option>
-                            {reasons.map(r => (
-                                <option key={r.id} value={r.id}>
-                                    {r.name}
-                                </option>
-                            ))}
-                        </select>
-                    )}
+                    <label className="block text-sm font-medium mb-1">Anexos (opcional)</label>
+                    <input type="file" multiple onChange={onFileChange} className="block w-full text-sm" />
                 </div>
 
-                <div>
-                    <label className="block text-sm font-medium mb-1">Anexo</label>
-                    <input type="file" onChange={e => setFile(e.target.files[0])} />
+                <div className="pt-2">
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        className="rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {submitting ? "Enviando..." : "Abrir Chamado"}
+                    </button>
                 </div>
-
-                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded" type="submit">
-                    Enviar Chamado
-                </button>
             </form>
         </div>
     );

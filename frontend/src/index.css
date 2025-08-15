@@ -15,3 +15,27 @@
         color: #2563EB;
     }
 }
+
+/* --- Hotfix: impedir que botões "Adicionar" saiam do card no Painel TI --- */
+#admin-catalog button {
+    position: static !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    transform: none !important;
+}
+
+#admin-catalog .flex {
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    /* mantém input + botão na mesma linha */
+}
+
+#admin-catalog input[type="text"],
+#admin-catalog input:not([type]) {
+    min-width: 0;
+    /* impede o input de empurrar o botão para fora */
+    width: 100%;
+}

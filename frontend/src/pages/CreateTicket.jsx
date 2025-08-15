@@ -9,7 +9,6 @@ export default function CreateTicket() {
     description: '',
     category: '',
     priority: '',
-    reasonId: '',
     categoryId: '',
     priorityId: '',
     attachment: null
@@ -18,7 +17,6 @@ export default function CreateTicket() {
   const [statusMsg, setStatusMsg] = useState('');
   const [categories, setCategories] = useState([]);
   const [priorities, setPriorities] = useState([]);
-  const [reasons, setReasons] = useState([]);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const navigate = useNavigate();
   const API = import.meta.env.VITE_API_URL || 'http://localhost:3000';
@@ -30,16 +28,14 @@ export default function CreateTicket() {
     const loadMeta = async () => {
       setLoadingMeta(true);
       try {
-        const [cRes, pRes, rRes] = await Promise.all([
+        const [cRes, pRes] = await Promise.all([
           axios.get(`${API}/categories`),
-          axios.get(`${API}/priorities`),
-          axios.get(`${API}/reasons`)
+          axios.get(`${API}/priorities`)
         ]);
         setCategories(Array.isArray(cRes.data) ? cRes.data : []);
         setPriorities(Array.isArray(pRes.data) ? pRes.data : []);
-        setReasons(Array.isArray(rRes.data) ? rRes.data : []);
       } catch (err) {
-        console.error('Erro ao carregar categorias/prioridades/motivos:', err);
+        console.error('Erro ao carregar listas de apoio:', err);
       } finally {
         setLoadingMeta(false);
       }
@@ -52,17 +48,19 @@ export default function CreateTicket() {
     const e = {};
     if (!form.title.trim()) e.title = 'Título é obrigatório.';
     if (!form.description.trim()) e.description = 'Descrição é obrigatória.';
+    if (!form.categoryId && !form.category) e.category = 'Selecione uma categoria ou informe outra.';
+    if (!form.priorityId && !form.priority) e.priority = 'Selecione uma prioridade ou informe outra.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleChange = ({ target }) => {
-    const { name, value, files } = target;
+  const handleChange = e => {
+    const { name, value, files } = e.target;
     setForm(prev => ({
       ...prev,
       [name]: name === 'attachment' ? files[0] : value
     }));
-    // limpar fallback se selecionar existente
+    // Zera o fallback de texto quando escolher uma opção existente
     if (name === 'categoryId') setForm(prev => ({ ...prev, category: '' }));
     if (name === 'priorityId') setForm(prev => ({ ...prev, priority: '' }));
   };
@@ -82,31 +80,24 @@ export default function CreateTicket() {
     if (form.priorityId) data.append('priorityId', form.priorityId);
     else if (form.priority) data.append('priority', form.priority);
 
-    if (form.reasonId) data.append('reasonId', form.reasonId);
-
     if (form.attachment) data.append('attachment', form.attachment);
 
     try {
       await axios.post(`${API}/tickets`, data, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-      setStatusMsg('✅ Chamado criado com sucesso!');
-      setTimeout(() => navigate('/tickets'), 1000);
+      setStatusMsg('✅ Chamado enviado com sucesso!');
+      setTimeout(() => navigate('/tickets'), 600);
     } catch (err) {
-      console.error(err);
-      setStatusMsg(
-        err.response?.data?.message
-          ? `❌ ${err.response.data.message}`
-          : '❌ Erro ao criar chamado.'
-      );
+      console.error('Erro ao criar chamado:', err);
+      const msg = err?.response?.data?.message || 'Falha ao criar chamado.';
+      setStatusMsg('❌ ' + msg);
     }
   };
 
   return (
-    <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-semibold mb-4">Novo Chamado</h2>
+    <div className="max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold mb-6">Novo Chamado</h1>
 
       {statusMsg && (
         <div
@@ -141,7 +132,7 @@ export default function CreateTicket() {
           {errors.description && <p className="text-red-600 text-sm mt-1">{errors.description}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block font-medium mb-1">Categoria</label>
             {loadingMeta ? (
@@ -171,9 +162,11 @@ export default function CreateTicket() {
                     className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
                   />
                 )}
+                {errors.category && <p className="text-red-600 text-sm mt-1">{errors.category}</p>}
               </>
             )}
           </div>
+
           <div>
             <label className="block font-medium mb-1">Prioridade</label>
             {loadingMeta ? (
@@ -203,42 +196,19 @@ export default function CreateTicket() {
                     className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 mt-2"
                   />
                 )}
+                {errors.priority && <p className="text-red-600 text-sm mt-1">{errors.priority}</p>}
               </>
             )}
           </div>
         </div>
 
-        <div>
-          <label className="block font-medium mb-1">Motivo (opcional)</label>
-          {loadingMeta ? (
-            <div className="text-sm text-gray-500">Carregando motivos...</div>
-          ) : (
-            <select
-              name="reasonId"
-              value={form.reasonId}
-              onChange={handleChange}
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-              <option value="">-- Selecione --</option>
-              {reasons.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-              <option value="">Outro</option>
-            </select>
-          )}
-        </div>
-
+        {/* Motivo removido */}
         <div>
           <label className="block font-medium mb-1">Anexo (opcional)</label>
           <input name="attachment" type="file" onChange={handleChange} />
         </div>
 
-        <button
-          type="submit"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-        >
+        <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
           Enviar Chamado
         </button>
       </form>
