@@ -39,3 +39,22 @@
     /* impede o input de empurrar o botão para fora */
     width: 100%;
 }
+
+/* =============================== */
+/* Melhoria: animação para toasts  */
+/* =============================== */
+@keyframes slide-in {
+    from {
+        transform: translateY(-8px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.animate-slide-in {
+    animation: slide-in 0.25s ease-out both;
+}

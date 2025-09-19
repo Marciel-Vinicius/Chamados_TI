@@ -1,7 +1,8 @@
 // frontend/src/pages/TicketDetails.jsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
+import { useToast } from '../contexts/ToastContext';
 
 export default function TicketDetails() {
   const { id } = useParams();
@@ -10,138 +11,130 @@ export default function TicketDetails() {
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState([]);
   const [msg, setMsg] = useState('');
-  const prevComments = useRef(null);
-  const prevStatus = useRef(null);
+  const { show } = useToast();
 
-  // fetch inicial + polling + foco
-  useEffect(() => {
-    fetchAll(false);
-    const iv = setInterval(() => fetchAll(true), 5000);
-    const onFocus = () => fetchAll(false);
-    window.addEventListener('focus', onFocus);
-    return () => {
-      clearInterval(iv);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [id]);
+  const API = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+  const headers = { Authorization: 'Bearer ' + localStorage.getItem('token') };
 
-  // busca ticket + comentários em conjunto
-  const fetchAll = async (notify) => {
+  const load = async () => {
     try {
-      const [resT, resC] = await Promise.all([
-        axios.get(`/tickets/${id}`),
-        axios.get(`/tickets/${id}/comments`)
-      ]);
-      const t = resT.data;
-      const cList = resC.data;
+      const res = await axios.get(`${API}/tickets/${id}`, { headers });
+      setTicket(res.data);
+      setStatus(res.data.status || '');
 
-      // status
-      if (prevStatus.current === null) prevStatus.current = t.status;
-      if (notify && Notification.permission === 'granted' && t.status !== prevStatus.current) {
-        new Notification('Status alterado', {
-          body: `Chamado está agora "${t.status}".`
-        });
-      }
-      prevStatus.current = t.status;
-
-      // comentários
-      if (prevComments.current === null) prevComments.current = cList.length;
-      if (notify && Notification.permission === 'granted' && cList.length > prevComments.current) {
-        const added = cList.slice(prevComments.current);
-        added.forEach(c =>
-          new Notification('Novo comentário', {
-            body: `${c.User.email}: ${c.content}`
-          })
-        );
-      }
-      prevComments.current = cList.length;
-
-      // atualiza estado
-      setTicket(t);
-      setStatus(t.status);
-      setComments(cList);
+      const c = await axios.get(`${API}/tickets/${id}/comments`, { headers });
+      setComments(c.data || []);
     } catch (err) {
-      console.error('Erro ao buscar detalhes/comentários:', err);
+      setMsg('Erro ao carregar ticket.');
     }
   };
 
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
   const postComment = async () => {
-    if (!newComment.trim()) return;
+    const content = newComment.trim();
+    if (!content) return;
     try {
-      await axios.post(`/tickets/${id}/comments`, { content: newComment });
+      await axios.post(`${API}/tickets/${id}/comments`, { content }, { headers });
       setNewComment('');
-      fetchAll(false);
+      await load();
+      show('Comentário enviado.', { type: 'success', title: 'Comentário' });
     } catch (err) {
-      console.error('Erro ao enviar comentário:', err);
+      const m = err?.response?.data?.message || 'Erro ao enviar comentário.';
+      show(m, { type: 'error' });
     }
   };
 
   const updateStatus = async () => {
     try {
-      const res = await axios.put(`/tickets/${id}/status`, { status });
-      setTicket(res.data);
-      setMsg('Status atualizado!');
+      await axios.put(`${API}/tickets/${id}`, { status }, { headers });
+      await load();
+      show('Status atualizado.', { type: 'success', title: 'Status' });
     } catch (err) {
-      console.error('Erro ao atualizar status:', err);
-      setMsg('Falha ao atualizar.');
+      const m = err?.response?.data?.message || 'Erro ao atualizar status.';
+      show(m, { type: 'error' });
     }
   };
 
-  if (!ticket) return <p>Carregando...</p>;
+  if (!ticket) return <div className="text-slate-500">Carregando…</div>;
 
   return (
-    <div>
-      <h2 className="text-2xl font-semibold mb-2">{ticket.title}</h2>
-      <p className="text-gray-600 mb-4">{ticket.category} • {ticket.priority}</p>
-      <p className="mb-4">{ticket.description}</p>
-      {ticket.attachment && (
-        <p className="mb-4">
-          <a href={ticket.attachment} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-            Ver anexo
-          </a>
-        </p>
-      )}
-
-      {ticket.User.role === 'TI' && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-1">Alterar Status</label>
-          <div className="flex items-center gap-2">
-            <select value={status} onChange={e => setStatus(e.target.value)} className="border px-3 py-2 rounded">
-              <option>Aberto</option>
-              <option>Em Andamento</option>
-              <option>Fechado</option>
-              <option>Cancelado</option>
-            </select>
-            <button onClick={updateStatus} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
-              Atualizar
-            </button>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-2xl font-bold">{ticket.title}</h1>
+          <p className="text-slate-600 mt-1">{ticket.description}</p>
+          <div className="mt-2 text-sm text-slate-600">
+            Categoria: <b>{ticket.category?.name || ticket.category}</b> •{' '}
+            Prioridade: <b>{ticket.priority?.name || ticket.priority}</b> •{' '}
+            Status: <b>{ticket.status}</b>
           </div>
-          {msg && <p className="mt-2 text-green-600">{msg}</p>}
         </div>
-      )}
 
-      <div className="mt-6">
-        <h3 className="text-lg font-medium mb-2">Comentários</h3>
-        {comments.length === 0 ? (
-          <p className="text-gray-500">Sem comentários.</p>
-        ) : (
-          comments.map(c => (
-            <div key={c.id} className="border p-3 rounded mb-3">
-              <p className="text-gray-800">{c.content}</p>
-              <p className="text-xs text-gray-500 mt-1">{c.User.email} • {new Date(c.createdAt).toLocaleString('pt-BR')}</p>
-            </div>
-          ))
-        )}
-        <textarea
-          rows="3"
-          value={newComment}
-          onChange={e => setNewComment(e.target.value)}
-          className="w-full border px-3 py-2 rounded mb-2"
-          placeholder="Escreva um comentário..."
-        />
-        <button onClick={postComment} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+        <div className="w-56">
+          <label className="block text-sm font-medium mb-1">Atualizar status</label>
+          <select
+            className="w-full border rounded px-3 py-2 bg-white"
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+          >
+            {['Aberto', 'Em Andamento', 'Fechado', 'Concluído'].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button
+            onClick={updateStatus}
+            className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="font-semibold mb-2">Comentários</h2>
+        <div className="space-y-3">
+          {comments.map(c => {
+            // Fallbacks de alias: user | User | author | createdBy | userEmail | email
+            const authorEmail =
+              c.user?.email ||
+              c.User?.email ||
+              c.author?.email ||
+              c.createdBy?.email ||
+              c.userEmail ||
+              c.email ||
+              '—';
+
+            const content = c.content ?? c.text ?? c.message ?? '';
+
+            return (
+              <div key={c.id} className="border rounded p-3">
+                <div className="text-sm text-slate-600 mb-1">
+                  {authorEmail} — {new Date(c.createdAt).toLocaleString()}
+                </div>
+                <div>{content}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4">
+          <textarea
+            rows="3"
+            value={newComment}
+            onChange={e => setNewComment(e.target.value)}
+            className="w-full border px-3 py-2 rounded mb-2"
+            placeholder="Escreva um comentário..."
+          />
+        </div>
+        <button
+          onClick={postComment}
+          disabled={!newComment.trim()}
+          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded"
+        >
           Enviar Comentário
         </button>
+        {msg && <div className="text-sm text-red-600 mt-2">{msg}</div>}
       </div>
     </div>
   );

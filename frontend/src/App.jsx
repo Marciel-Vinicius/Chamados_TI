@@ -27,39 +27,36 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-        {/* Área logada */}
+        {/* Área logada (Layout + Outlet) */}
         <Route
-          path="/*"
           element={
             <ProtectedRoute>
-              <Layout>
-                <Routes>
-                  <Route index element={<Navigate to="tickets" replace />} />
-                  <Route path="tickets" element={<TicketList />} />
-                  <Route path="tickets/new" element={<CreateTicket />} />
-                  <Route path="tickets/:id" element={<TicketDetails />} />
-                  <Route
-                    path="admin"
-                    element={
-                      <TIOnlyRoute>
-                        <AdminTickets />
-                      </TIOnlyRoute>
-                    }
-                  />
-                  <Route
-                    path="reports"
-                    element={
-                      <TIOnlyRoute>
-                        <Reports />
-                      </TIOnlyRoute>
-                    }
-                  />
-                  <Route path="*" element={<Navigate to="tickets" replace />} />
-                </Routes>
-              </Layout>
+              <Layout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route path="/" element={<Navigate to="/tickets" replace />} />
+          <Route path="/tickets" element={<TicketList />} />
+          <Route path="/tickets/new" element={<CreateTicket />} />
+          <Route path="/tickets/:id" element={<TicketDetails />} />
+          <Route
+            path="/admin"
+            element={
+              <TIOnlyRoute>
+                <AdminTickets />
+              </TIOnlyRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <TIOnlyRoute>
+                <Reports />
+              </TIOnlyRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/tickets" replace />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

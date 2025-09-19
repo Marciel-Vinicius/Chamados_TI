@@ -1,9 +1,11 @@
 // frontend/src/components/Layout.jsx
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { NotificationProvider } from "../contexts/NotificationContext";
 import NotificationBell from "./NotificationBell";
+import { ToastProvider, useToast } from "../contexts/ToastContext";
+import ToastContainer from "./ToastContainer";
 
 /** Decodifica o payload do JWT sem libs externas */
 function parseJwt(token) {
@@ -17,74 +19,105 @@ function parseJwt(token) {
                 .join("")
         );
         return JSON.parse(jsonPayload);
-    } catch {
+    } catch (e) {
         return null;
     }
 }
 
-function isTIUser(payload) {
-    if (!payload) return false;
-    const values = [];
-    const push = (v) => (v != null ? values.push(v) : null);
-    push(payload.sector); push(payload.setor); push(payload.department); push(payload.sectorName);
-    push(payload.role);
-    if (Array.isArray(payload.sectors)) values.push(...payload.sectors);
-    if (Array.isArray(payload.roles)) values.push(...payload.roles);
-    const flags = values.map((v) => String(v).toLowerCase());
-    const allowed = new Set(["ti", "dev", "tecnologia", "it", "admin", "admin-ti"]);
-    return flags.some((v) => allowed.has(v)) || payload.isAdmin === true;
-}
-
-export default function Layout({ children }) {
+function LayoutShell() {
     const navigate = useNavigate();
-    const [canSeeAdmin, setCanSeeAdmin] = useState(false);
+    const [userEmail, setUserEmail] = useState("");
+    const [userRole, setUserRole] = useState("");
+    const [loading, setLoading] = useState(true);
+    const API = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
+    const { show } = useToast();
 
     useEffect(() => {
         const token = localStorage.getItem("token");
-        if (token) {
-            axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-            setCanSeeAdmin(isTIUser(parseJwt(token)));
-        } else {
-            setCanSeeAdmin(false);
+        if (!token) {
+            navigate("/login");
+            return;
         }
-    }, []);
+        const payload = parseJwt(token.replace(/^Bearer\s+/, ""));
+        setUserEmail(payload?.email || "");
+        setUserRole(payload?.role || "");
+        setLoading(false);
+    }, [navigate]);
 
-    function logout() {
+    const logout = async () => {
         localStorage.removeItem("token");
-        delete axios.defaults.headers.common["Authorization"];
+        show("Você saiu da conta.", { type: "info", title: "Logout" });
         navigate("/login");
+        try { await axios.post(`${API}/auth/logout`); } catch { }
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen grid place-items-center bg-gradient-to-b from-slate-50 to-slate-100">
+                <div className="animate-pulse text-slate-500">Carregando…</div>
+            </div>
+        );
     }
 
+    // Eventos SSE -> toasts
+    const handleNotify = (payload) => {
+        if (!payload) return;
+        if (payload.type === "new-ticket") {
+            const t = payload.ticket || {};
+            show(`"${t.title}" (${t.priority?.name || "Prioridade"})`, {
+                type: "info",
+                title: "Novo chamado aberto"
+            });
+        } else if (payload.type === "new-comment") {
+            show(`Novo comentário no chamado #${payload.ticketId}`, {
+                type: "info",
+                title: "Atualização de chamado"
+            });
+        }
+    };
+
     return (
-        <NotificationProvider>
-            <div className="min-h-screen bg-gray-50">
-                <header className="bg-white shadow-sm">
-                    <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-                        <Link to="/tickets" className="text-xl font-bold text-gray-800">
-                            TI-Chamados
-                        </Link>
-                        <nav className="hidden md:flex items-center gap-6 text-sm">
-                            <Link to="/tickets" className="hover:underline">Meus Chamados</Link>
-                            <Link to="/tickets/new" className="hover:underline">Abrir Chamado</Link>
-                            {canSeeAdmin && (
-                                <>
-                                    <Link to="/reports" className="hover:underline">Relatórios</Link>
-                                    <Link to="/admin" className="hover:underline">Painel TI</Link>
-                                </>
-                            )}
-                        </nav>
-                        <div className="flex items-center gap-4">
+        <NotificationProvider onEvent={handleNotify}>
+            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+                <header className="sticky top-0 z-40 bg-white/70 backdrop-blur border-b">
+                    <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+                        <div className="flex items-center gap-6">
+                            <Link to="/tickets" className="font-bold text-slate-800 tracking-tight">Chamados</Link>
+                            <nav className="hidden md:flex items-center gap-4 text-sm text-slate-600">
+                                <Link to="/tickets" className="hover:text-slate-900">Meus Chamados</Link>
+                                <Link to="/tickets/new" className="hover:text-slate-900">Abrir Chamado</Link>
+                                <Link to="/reports" className="hover:text-slate-900">Relatórios</Link>
+                                {userRole === "TI" && (
+                                    <Link to="/admin" className="hover:text-slate-900">Painel TI</Link>
+                                )}
+                            </nav>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className="hidden sm:inline text-sm text-slate-600">{userEmail}</span>
                             <NotificationBell />
-                            <button onClick={logout} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                                Logout
+                            <button onClick={logout} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm">
+                                Sair
                             </button>
                         </div>
                     </div>
                 </header>
-                <main className="container mx-auto px-6 py-10">
-                    <div className="bg-white rounded-2xl shadow-lg p-8">{children}</div>
+
+                <main className="max-w-6xl mx-auto px-6 py-8">
+                    <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
+                        <Outlet />
+                    </div>
                 </main>
+
+                <ToastContainer />
             </div>
         </NotificationProvider>
+    );
+}
+
+export default function Layout() {
+    return (
+        <ToastProvider>
+            <LayoutShell />
+        </ToastProvider>
     );
 }

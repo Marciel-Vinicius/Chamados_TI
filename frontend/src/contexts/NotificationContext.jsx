@@ -15,77 +15,78 @@ const getCleanToken = () => {
 const buildStreamUrl = () => {
     const base = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
     const token = getCleanToken();
-    if (!token) return null;
     return `${base}/tickets/stream?token=${encodeURIComponent(token)}`;
 };
 
-export function NotificationProvider({ children }) {
+export function NotificationProvider({ children, onEvent }) {
     const [notifications, setNotifications] = useState([]);
     const esRef = useRef(null);
-    const retryRef = useRef(1000);
+    const retryRef = useRef(1000); // backoff (1s, 2s, 4s...)
 
     useEffect(() => {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
-        connect();
-        return () => {
-            if (esRef.current) esRef.current.close();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const connect = () => {
-        const url = buildStreamUrl();
-        if (!url) {
-            console.warn('[SSE] token ausente, não conectando.');
-            return;
-        }
-        console.log('[SSE] conectando em', url);
-        if (esRef.current) esRef.current.close();
-        const es = new EventSource(url);
-        esRef.current = es;
-
-        es.addEventListener('connected', (e) => {
-            console.log('[SSE] conectado:', e.data);
-            retryRef.current = 1000;
-        });
-
-        es.addEventListener('notify', (e) => {
-            let data;
-            try {
-                data = JSON.parse(e.data);
-            } catch (err) {
-                console.error('[SSE] parse error:', err);
+        const connect = () => {
+            const url = buildStreamUrl();
+            const token = getCleanToken();
+            if (!token) {
+                console.warn('[SSE] token ausente, não conectando.');
                 return;
             }
-            const id = Date.now().toString(36) + Math.random().toString(36, 5);
-            const notification = { ...data, id, read: false, receivedAt: new Date() };
-            setNotifications(prev => [notification, ...prev]);
+            if (esRef.current) esRef.current.close();
 
-            if ('Notification' in window && Notification.permission === 'granted') {
-                let title = '';
-                let body = '';
-                if (data.type === 'new-ticket') {
-                    title = 'Novo chamado';
-                    body = data.ticket.title;
-                } else if (data.type === 'new-comment') {
-                    title = 'Novo comentário';
-                    body = `${data.comment.User?.email || 'Alguém'}: ${data.comment.content}`;
+            const es = new EventSource(url);
+            esRef.current = es;
+
+            es.addEventListener('connected', (e) => {
+                retryRef.current = 1000;
+            });
+
+            es.addEventListener('notify', (e) => {
+                try {
+                    const payload = JSON.parse(e.data);
+                    // callback externo (toasts)
+                    if (onEvent) onEvent(payload);
+
+                    // mantemos também uma lista de notificações simples
+                    setNotifications(prev => {
+                        const id = Math.random().toString(36).slice(2);
+                        const title = payload.type === 'new-ticket'
+                            ? 'Novo chamado'
+                            : payload.type === 'new-comment'
+                                ? 'Novo comentário'
+                                : (payload.type || 'Notificação');
+
+                        const message = payload.type === 'new-ticket'
+                            ? (payload.ticket?.title || 'Chamado criado')
+                            : payload.type === 'new-comment'
+                                ? `Atualização no chamado #${payload.ticketId}`
+                                : '';
+
+                        const item = { id, type: payload.type, title, message, read: false, at: Date.now() };
+                        return [item, ...prev].slice(0, 100); // limite de 100
+                    });
+                } catch (err) {
+                    console.warn('[SSE notify] erro ao parsear', err);
                 }
-                new Notification(title, { body });
-            }
-        });
+            });
 
-        es.onerror = () => {
-            console.warn('[SSE] erro/desconectado. Reconectando em', retryRef.current, 'ms');
-            es.close();
-            setTimeout(() => {
+            es.addEventListener('ping', () => {/* keep-alive */ });
+
+            es.addEventListener('error', () => {
+                es.close();
+                // backoff exponencial (até ~30s)
                 retryRef.current = Math.min(retryRef.current * 2, 30000);
-                connect();
-            }, retryRef.current);
+                setTimeout(connect, retryRef.current);
+            });
         };
-    };
+
+        connect();
+        return () => {
+            if (esRef.current) {
+                esRef.current.close();
+                esRef.current = null;
+            }
+        };
+    }, [onEvent]);
 
     const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     const markRead = (id) => setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));

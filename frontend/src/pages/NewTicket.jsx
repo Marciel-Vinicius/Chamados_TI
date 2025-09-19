@@ -2,10 +2,12 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../contexts/ToastContext";
 
 export default function NewTicket() {
     const API = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
     const navigate = useNavigate();
+    const { show } = useToast();
 
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
@@ -17,109 +19,85 @@ export default function NewTicket() {
     const [categoryId, setCategoryId] = useState("");
     const [priorityId, setPriorityId] = useState("");
     const [sectorId, setSectorId] = useState("");
+    const [attachment, setAttachment] = useState(null);
 
-    const [files, setFiles] = useState([]);
     const [submitting, setSubmitting] = useState(false);
-    const [errorMsg, setErrorMsg] = useState("");
-
-    // Authorization padrão
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-    }, []);
 
     useEffect(() => {
-        (async () => {
+        const load = async () => {
             try {
-                const [cats, pris, secs] = await Promise.all([
-                    axios.get(`${API}/categories`),
-                    axios.get(`${API}/priorities`),
-                    axios.get(`${API}/sectors`),
+                const token = localStorage.getItem("token");
+                const [c, p, s] = await Promise.all([
+                    axios.get(`${API}/categories`, { headers: { Authorization: "Bearer " + token } }),
+                    axios.get(`${API}/priorities`, { headers: { Authorization: "Bearer " + token } }),
+                    axios.get(`${API}/sectors`, { headers: { Authorization: "Bearer " + token } }),
                 ]);
-                setCategories(cats.data || []);
-                setPriorities(pris.data || []);
-                setSectors(secs.data || []);
-            } catch (err) {
-                console.error("Falha ao carregar listas:", err);
-                setErrorMsg("Falha ao carregar listas de apoio. Tente novamente.");
-            }
-        })();
+                setCategories(c.data || []);
+                setPriorities(p.data || []);
+                setSectors(s.data || []);
+            } catch { }
+        };
+        load();
     }, [API]);
 
-    function onFileChange(e) {
-        setFiles(Array.from(e.target.files || []));
-    }
-
-    async function handleSubmit(e) {
+    const submit = async (e) => {
         e.preventDefault();
-        setErrorMsg("");
 
         if (!title.trim() || !description.trim() || !categoryId || !priorityId || !sectorId) {
-            setErrorMsg("Preencha título, descrição, categoria, prioridade e setor.");
+            show('Preencha título, descrição, categoria, prioridade e setor.', { type: 'error', title: 'Campos obrigatórios' });
             return;
         }
 
         try {
             setSubmitting(true);
-
-            // Usa FormData para suportar anexos
             const form = new FormData();
             form.append("title", title.trim());
             form.append("description", description.trim());
             form.append("categoryId", categoryId);
             form.append("priorityId", priorityId);
             form.append("sectorId", sectorId);
-            // Motivo REMOVIDO — não enviamos reasonId nem reason.
+            if (attachment) form.append("attachment", attachment);
 
-            files.forEach((f) => form.append("files", f));
-
-            await axios.post(`${API}/tickets`, form, {
-                headers: { "Content-Type": "multipart/form-data" },
+            const token = localStorage.getItem("token");
+            const res = await axios.post(`${API}/tickets`, form, {
+                headers: { Authorization: "Bearer " + token },
             });
 
-            navigate("/tickets"); // volta para a lista do usuário
+            const created = res.data;
+            show('Chamado aberto com sucesso.', { type: 'success', title: 'Chamado criado' });
+            navigate(`/tickets/${created.id}`);
         } catch (err) {
-            console.error("Erro ao abrir chamado:", err);
-            const msg =
-                err?.response?.status === 400
-                    ? "Dados inválidos. Revise os campos."
-                    : err?.response?.data?.message || "Erro ao abrir chamado.";
-            setErrorMsg(msg);
+            show('Erro ao abrir chamado.', { type: 'error' });
         } finally {
             setSubmitting(false);
         }
-    }
+    };
 
     return (
-        <div className="max-w-3xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Abrir Chamado</h1>
+        <div className="max-w-2xl">
+            <h1 className="text-2xl font-bold mb-4">Abrir Chamado</h1>
 
-            {errorMsg && (
-                <div className="mb-4 rounded-lg border border-red-300 bg-red-50 text-red-700 px-4 py-3">{errorMsg}</div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form className="space-y-4" onSubmit={submit}>
                 <div>
                     <label className="block text-sm font-medium mb-1">Título</label>
                     <input
+                        className="w-full rounded-lg border px-3 py-2"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="w-full rounded-lg border px-3 py-2"
-                        placeholder="Ex.: Impressora não imprime"
+                        placeholder="Resumo do problema"
                     />
                 </div>
 
                 <div>
                     <label className="block text-sm font-medium mb-1">Descrição</label>
                     <textarea
+                        className="w-full rounded-lg border px-3 py-2"
+                        rows={4}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        className="w-full rounded-lg border px-3 py-2 min-h-[120px]"
-                        placeholder="Descreva o problema com detalhes…"
+                        placeholder="Detalhes do problema"
                     />
                 </div>
-
-                {/* Campo Motivo foi REMOVIDO */}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -131,9 +109,7 @@ export default function NewTicket() {
                         >
                             <option value="">Selecione…</option>
                             {categories.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.name}
-                                </option>
+                                <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                         </select>
                     </div>
@@ -147,9 +123,7 @@ export default function NewTicket() {
                         >
                             <option value="">Selecione…</option>
                             {priorities.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                    {p.name}
-                                </option>
+                                <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
                     </div>
@@ -163,17 +137,15 @@ export default function NewTicket() {
                         >
                             <option value="">Selecione…</option>
                             {sectors.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                    {s.name}
-                                </option>
+                                <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                         </select>
                     </div>
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-1">Anexos (opcional)</label>
-                    <input type="file" multiple onChange={onFileChange} className="block w-full text-sm" />
+                    <label className="block text-sm font-medium mb-1">Anexo (opcional)</label>
+                    <input type="file" onChange={(e) => setAttachment(e.target.files?.[0] || null)} />
                 </div>
 
                 <div className="pt-2">
