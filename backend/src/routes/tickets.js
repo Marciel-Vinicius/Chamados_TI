@@ -197,7 +197,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * Atualizar status (TI)
+ * Atualizar status (TI) — já existia (método PUT)
  */
 router.put('/:id/status', role(['TI']), async (req, res) => {
   try {
@@ -210,6 +210,146 @@ router.put('/:id/status', role(['TI']), async (req, res) => {
   } catch (err) {
     console.error('[PUT /tickets/:id/status] erro:', err);
     return res.status(400).json({ message: 'Erro ao atualizar status', error: err.message });
+  }
+});
+
+/**
+ * 🔹 NOVO: Atualizar status (TI) também via PATCH /:id/status
+ * (para compatibilidade com o front)
+ */
+router.patch('/:id/status', role(['TI']), async (req, res) => {
+  try {
+    const { status } = req.body;
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket) return res.status(404).json({ message: 'Chamado não encontrado' });
+    if (typeof status !== 'string' || !status.trim()) {
+      return res.status(400).json({ message: 'Status é obrigatório.' });
+    }
+    ticket.status = status.trim();
+    await ticket.save();
+    return res.json(ticket);
+  } catch (err) {
+    console.error('[PATCH /tickets/:id/status] erro:', err);
+    return res.status(400).json({ message: 'Erro ao atualizar status', error: err.message });
+  }
+});
+
+/**
+ * 🔹 NOVO: Atualização genérica (TI) — PATCH /:id
+ * Aceita { status, title, description, categoryId, priorityId } e mantém consistência de nome
+ */
+router.patch('/:id', role(['TI']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, title, description, categoryId, priorityId, sectorId, category, priority } = req.body;
+
+    const ticket = await Ticket.findByPk(id);
+    if (!ticket) return res.status(404).json({ message: 'Chamado não encontrado' });
+
+    if (typeof status === 'string') ticket.status = status.trim();
+    if (typeof title === 'string') ticket.title = title.trim();
+    if (typeof description === 'string') ticket.description = description.trim();
+
+    // Se vier ID, atualiza ID e também o campo de nome (igual ao POST /)
+    if (categoryId !== undefined) {
+      ticket.categoryId = categoryId || null;
+      if (Category && categoryId) {
+        const cat = await Category.findByPk(categoryId);
+        if (cat) ticket.category = cat.name;
+      } else if (category) {
+        ticket.category = String(category);
+      }
+    } else if (typeof category === 'string') {
+      ticket.category = category;
+    }
+
+    if (priorityId !== undefined) {
+      ticket.priorityId = priorityId || null;
+      if (Priority && priorityId) {
+        const pr = await Priority.findByPk(priorityId);
+        if (pr) ticket.priority = pr.name;
+      } else if (priority) {
+        ticket.priority = String(priority);
+      }
+    } else if (typeof priority === 'string') {
+      ticket.priority = priority;
+    }
+
+    if (sectorId !== undefined) {
+      ticket.sectorId = sectorId || null;
+    }
+
+    await ticket.save();
+
+    // retorna com include básico
+    const include = [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }];
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    const full = await Ticket.findByPk(ticket.id, { include });
+    return res.json(full);
+  } catch (err) {
+    console.error('[PATCH /tickets/:id] erro:', err);
+    return res.status(400).json({ message: 'Erro ao atualizar chamado', error: err.message });
+  }
+});
+
+/**
+ * 🔹 NOVO: Atualização genérica (TI) — PUT /:id (alias do PATCH)
+ */
+router.put('/:id', role(['TI']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, title, description, categoryId, priorityId, sectorId, category, priority } = req.body;
+
+    const ticket = await Ticket.findByPk(id);
+    if (!ticket) return res.status(404).json({ message: 'Chamado não encontrado' });
+
+    if (typeof status === 'string') ticket.status = status.trim();
+    if (typeof title === 'string') ticket.title = title.trim();
+    if (typeof description === 'string') ticket.description = description.trim();
+
+    if (categoryId !== undefined) {
+      ticket.categoryId = categoryId || null;
+      if (Category && categoryId) {
+        const cat = await Category.findByPk(categoryId);
+        if (cat) ticket.category = cat.name;
+      } else if (category) {
+        ticket.category = String(category);
+      }
+    } else if (typeof category === 'string') {
+      ticket.category = category;
+    }
+
+    if (priorityId !== undefined) {
+      ticket.priorityId = priorityId || null;
+      if (Priority && priorityId) {
+        const pr = await Priority.findByPk(priorityId);
+        if (pr) ticket.priority = pr.name;
+      } else if (priority) {
+        ticket.priority = String(priority);
+      }
+    } else if (typeof priority === 'string') {
+      ticket.priority = priority;
+    }
+
+    if (sectorId !== undefined) {
+      ticket.sectorId = sectorId || null;
+    }
+
+    await ticket.save();
+
+    const include = [{ model: User, attributes: ['id', 'email', 'setor', 'role'] }];
+    if (Reason) include.push({ model: Reason });
+    if (Category) include.push({ model: Category });
+    if (Priority) include.push({ model: Priority });
+
+    const full = await Ticket.findByPk(ticket.id, { include });
+    return res.json(full);
+  } catch (err) {
+    console.error('[PUT /tickets/:id] erro:', err);
+    return res.status(400).json({ message: 'Erro ao atualizar chamado', error: err.message });
   }
 });
 

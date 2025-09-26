@@ -28,11 +28,20 @@ export default function AdminTickets() {
   const [catalogError, setCatalogError] = useState("");
   const [saving, setSaving] = useState({ category: false, priority: false, sector: false });
 
-  // Authorization padrão
-  useEffect(() => {
+  // ===== edição de status (Painel TI) =====
+  const STATUS_OPTIONS = ["Aberto", "Em Andamento", "Fechado", "Concluído"];
+  const [statusEditing, setStatusEditing] = useState("");
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  // Sempre enviar Authorization nos requests
+  const headers = useMemo(() => {
     const token = localStorage.getItem("token");
-    if (token) axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
+
+  useEffect(() => {
+    setStatusEditing(selected?.status || "");
+  }, [selected?.id, selected?.status]);
 
   // carregamentos
   useEffect(() => {
@@ -43,14 +52,17 @@ export default function AdminTickets() {
         setTicketsLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- fetchers ----
   async function fetchTickets() {
     setTicketsError("");
     try {
-      const { data } = await axios.get(`${API}/tickets/all`);
-      setTickets(Array.isArray(data) ? data : []);
+      const { data } = await axios.get(`${API}/tickets/all`, { headers });
+      const arr = Array.isArray(data) ? data : [];
+      setTickets(arr);
+      return arr;
     } catch (err) {
       console.error("[GET /tickets/all] erro:", err);
       const msg =
@@ -60,11 +72,12 @@ export default function AdminTickets() {
             ? "Sem permissão para visualizar os chamados do TI."
             : "Erro ao buscar chamados. Veja console.";
       setTicketsError(msg);
+      return [];
     }
   }
   async function fetchCategories() {
     try {
-      const { data } = await axios.get(`${API}/categories`);
+      const { data } = await axios.get(`${API}/categories`, { headers });
       setCats(Array.isArray(data) ? data : []);
     } catch {
       setCatalogError("Falha ao carregar Categorias.");
@@ -72,7 +85,7 @@ export default function AdminTickets() {
   }
   async function fetchPriorities() {
     try {
-      const { data } = await axios.get(`${API}/priorities`);
+      const { data } = await axios.get(`${API}/priorities`, { headers });
       setPriorities(Array.isArray(data) ? data : []);
     } catch {
       setCatalogError("Falha ao carregar Prioridades.");
@@ -80,7 +93,7 @@ export default function AdminTickets() {
   }
   async function fetchSectors() {
     try {
-      const { data } = await axios.get(`${API}/sectors`);
+      const { data } = await axios.get(`${API}/sectors`, { headers });
       setSectors(Array.isArray(data) ? data : []);
     } catch {
       setCatalogError("Falha ao carregar Setores.");
@@ -90,7 +103,7 @@ export default function AdminTickets() {
   async function fetchComments(ticketId) {
     setCommentsLoading(true);
     try {
-      const { data } = await axios.get(`${API}/tickets/${ticketId}/comments`);
+      const { data } = await axios.get(`${API}/tickets/${ticketId}/comments`, { headers });
       setComments(Array.isArray(data) ? data : []);
     } finally {
       setCommentsLoading(false);
@@ -116,7 +129,7 @@ export default function AdminTickets() {
 
     try {
       setSaving((s) => ({ ...s, [kind]: true }));
-      const { data } = await axios.post(`${API}/${cfg.endpoint}`, { name });
+      const { data } = await axios.post(`${API}/${cfg.endpoint}`, { name }, { headers });
       cfg.setter((prev) => [...prev, data]);
       cfg.clear();
       setCatalogError("");
@@ -135,6 +148,42 @@ export default function AdminTickets() {
     arr.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
     return arr;
   }, [tickets]);
+
+  // ===== salvar status (tenta PATCH/PUT/PATCH status) =====
+  async function updateTicketStatus(id, status) {
+    const payload = { status };
+    try {
+      await axios.patch(`${API}/tickets/${id}`, payload, { headers });
+      return;
+    } catch (e1) {
+      if (e1?.response?.status !== 404) throw e1;
+    }
+    try {
+      await axios.put(`${API}/tickets/${id}`, payload, { headers });
+      return;
+    } catch (e2) {
+      if (e2?.response?.status !== 404) throw e2;
+    }
+    await axios.patch(`${API}/tickets/${id}/status`, payload, { headers });
+  }
+
+  async function saveStatus() {
+    if (!selected?.id) return;
+    try {
+      setSavingStatus(true);
+      await updateTicketStatus(selected.id, statusEditing);
+      const fresh = await fetchTickets();
+      const upd = fresh.find((x) => x.id === selected.id);
+      setSelected(upd || null);
+      alert("Status atualizado com sucesso.");
+    } catch (err) {
+      console.error("Falha ao atualizar status:", err);
+      const msg = err?.response?.data?.message || "Falha ao atualizar status.";
+      alert(msg);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -162,6 +211,7 @@ export default function AdminTickets() {
           onAdd={() => addItem("category")}
           loading={saving.category}
         >
+          {/* chips */}
           <Chips items={cats} />
         </CatalogCard>
 
@@ -210,7 +260,6 @@ export default function AdminTickets() {
                       <StatusPill status={t.status} />
                     </div>
                     <div className="mt-1 text-sm text-gray-600">
-                      {/* Motivo removido */}
                       {t.category || "Sem categoria"}
                       {t.priority ? ` • ${t.priority}` : ""}
                     </div>
@@ -236,6 +285,12 @@ export default function AdminTickets() {
               newComment={newComment}
               setNewComment={setNewComment}
               onSendComment={addComment}
+              // ===== props novos para edição de status =====
+              statusOptions={STATUS_OPTIONS}
+              statusEditing={statusEditing}
+              setStatusEditing={setStatusEditing}
+              onSaveStatus={saveStatus}
+              savingStatus={savingStatus}
             />
           )}
         </div>
@@ -248,7 +303,7 @@ export default function AdminTickets() {
     const content = newComment.trim();
     if (!selected?.id || !content) return;
     try {
-      const { data } = await axios.post(`${API}/tickets/${selected.id}/comments`, { content });
+      const { data } = await axios.post(`${API}/tickets/${selected.id}/comments`, { content }, { headers });
       setComments((prev) => [...prev, data]);
       setNewComment("");
     } catch {
@@ -264,7 +319,8 @@ function CatalogCard({ title, placeholder, value, onChange, onAdd, loading, chil
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
       <div className="mb-3 font-semibold">{title}</div>
       <div className="space-y-3">
-        <div className="flex">
+        {/* Linha do input + botão com classe específica para o hotfix */}
+        <div className="add-row">
           <input
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -290,7 +346,7 @@ function Chips({ items }) {
     return <div className="text-sm text-gray-500">Nenhum item cadastrado.</div>;
   }
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="chip-list mt-3">
       {items.map((i) => (
         <span
           key={`chip-${i.id}-${i.name}`}
@@ -307,7 +363,7 @@ function StatusPill({ status }) {
   const map =
     status === "Concluído"
       ? "bg-blue-100 text-blue-800"
-      : status === "Em andamento"
+      : (status === "Em andamento" || status === "Em Andamento")
         ? "bg-amber-100 text-amber-800"
         : "bg-emerald-100 text-emerald-800";
   return <span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${map}`}>{status || "Aberto"}</span>;
@@ -322,14 +378,26 @@ function Detail({ label, value }) {
   );
 }
 
-function TicketDetails({ ticket, comments, commentsLoading, newComment, setNewComment, onSendComment }) {
+function TicketDetails({
+  ticket,
+  comments,
+  commentsLoading,
+  newComment,
+  setNewComment,
+  onSendComment,
+  // novos props
+  statusOptions,
+  statusEditing,
+  setStatusEditing,
+  onSaveStatus,
+  savingStatus
+}) {
   return (
     <div className="rounded-2xl border p-6">
       <h3 className="text-xl font-bold">{ticket.title}</h3>
       <div className="mt-2 text-sm text-gray-700">{ticket.description}</div>
 
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-        {/* Motivo removido */}
         <Detail label="Categoria" value={ticket.category || "—"} />
         <Detail label="Prioridade" value={ticket.priority || "—"} />
         <Detail label="Status" value={<StatusPill status={ticket.status} />} />
@@ -339,6 +407,32 @@ function TicketDetails({ ticket, comments, commentsLoading, newComment, setNewCo
           label="Aberto em"
           value={ticket.createdAt ? new Date(ticket.createdAt).toLocaleString("pt-BR") : "—"}
         />
+      </div>
+
+      {/* ===== Editor de status ===== */}
+      <div className="mt-6 border-t pt-4">
+        <div className="text-sm font-semibold mb-2">Atualizar status</div>
+        <div className="flex items-center gap-2">
+          <select
+            value={statusEditing}
+            onChange={(e) => setStatusEditing(e.target.value)}
+            className="border rounded px-3 py-2 bg-white"
+          >
+            {statusOptions.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button
+            onClick={onSaveStatus}
+            disabled={savingStatus}
+            className="rounded-lg px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {savingStatus ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+        <div className="text-xs text-gray-500 mt-2">
+          Alterar aqui atualiza o chamado para todos os usuários.
+        </div>
       </div>
 
       <div className="mt-6">
